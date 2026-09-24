@@ -61,3 +61,12 @@ body.playing, body.playing * { cursor: none; }
 button.link { background: none; border: none; color: #2d4d7c; text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
 .ok { color: #1c7a2c; font-weight: bold; }
 .warn { color: #b3261e; font-weight: bold; }
+
+.keys { font-size: 13px; color: #444; margin: 10px 0 0; }
+.demo-options { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.demo-options label { display: flex; gap: 8px; align-items: center; }
+.demo-options select { font: inherit; font-size: 12px; flex: 1; }
+.results { border-collapse: collapse; margin: 6px 0 10px; font-size: 14px; }
+.results th, .results td { border: 1px solid #bbb; padding: 3px 10px; text-align: right; }
+.results th:first-child, .results td:first-child { text-align: left; }
+.downloads { flex-wrap: wrap; justify-content: flex-start; }

@@ -1,9 +1,12 @@
 import { Experiment, GEOMETRY, laneX, randomSeed, SessionRecorder } from '@gtbd/core';
-import { DEFAULT_CONFIG, GTBALLDROP_VERSION, type EventEnvelope } from '@gtbd/protocol';
-import { IndexedDbOutboxStore, Replicator } from '@gtbd/sinks';
-import { HostLink, hostTarget } from './host-link';
+import { DEFAULT_CONFIG, GTBALLDROP_VERSION, type DomainEvent, type EventEnvelope, type HostToGame } from '@gtbd/protocol';
+import { demoCapture, hostCapture, type Capture } from './capture';
+import { DEMO_PRESETS, demoPreset } from './demo';
 import { Renderer } from './renderer';
 import { Screens } from './screens';
+
+/** The static-website build (npm run build:demo): no host, nothing leaves the browser. */
+const DEMO = import.meta.env.VITE_DEMO === '1';
 
 const params = new URLSearchParams(location.search);
 const stage = document.getElementById('stage')!;
@@ -11,12 +14,12 @@ const canvas = document.getElementById('view') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 hud.textContent = `GT Ball Drop v. ${GTBALLDROP_VERSION}`;
 
-// ---- host link and data capture -----------------------------------------------------------
+// ---- data capture -------------------------------------------------------------------------
 
-const link = new HostLink(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ui`);
-const hello = await link.start();
-const config = hello?.config ?? DEFAULT_CONFIG;
 const adminLinks = new Set<string>();
+const capture: Capture = DEMO ? demoCapture() : await hostCapture((m) => onHostMessage(m));
+const preset = DEMO ? demoPreset(params) : null;
+const config = preset?.config ?? capture.hello?.config ?? DEFAULT_CONFIG;
 
 // For side-by-side comparison, ?world=classic|clean and ?shading=0..1 override the config.
 // (A session's config.json records the config values, not these overrides.)
@@ -38,30 +41,26 @@ function layout(): void {
 window.addEventListener('resize', layout);
 layout();
 
-// Local-first: every event goes to the browser's IndexedDB outbox, then to the host,
-// which fsyncs and acks. A cloud target would be one more entry in this list.
-const replicator = new Replicator(new IndexedDbOutboxStore(), [hostTarget(link)]);
-replicator.start();
-
 let exp: Experiment | null = null;
 let pending: EventEnvelope[] = [];
 let lastAdvance = performance.now();
 let quitting = false;
+const results: Extract<DomainEvent, { type: 'block-ended' | 'calibration-ended' }>[] = [];
 
 const flush = () => {
-  if (pending.length) void replicator.append(pending.splice(0));
+  if (pending.length) capture.record(pending.splice(0));
 };
 setInterval(flush, 100);
 
-// Status for the admin display: small, local, and 4 Hz is plenty.
+// Status for the admin display and the control API: small, local, and 4 Hz is plenty.
 setInterval(() => {
-  if (exp) link.send({ t: 'status', status: exp.status() });
+  if (exp) capture.status(exp.status());
 }, 250);
 
-link.on((m) => {
+function onHostMessage(m: HostToGame): void {
   switch (m.t) {
     case 'hello':
-      screens.updateStart({ hostState: 'connected', pairingCode: m.pairingCode });
+      screens.updateStart({ mode: 'host', pairingCode: m.pairingCode });
       break;
     case 'cmd':
       exp?.dispatch({ type: 'remote', command: m.command, source: m.source });
@@ -82,7 +81,7 @@ link.on((m) => {
       console.error('host:', m.message);
       break;
   }
-});
+}
 
 // ---- screens and input --------------------------------------------------------------------
 
@@ -90,27 +89,37 @@ const screens = new Screens(document.getElementById('overlay')!, {
   onStart: (pid) => startSession(pid),
   onContinue: () => exp?.dispatch({ type: 'continue', source: 'participant' }),
   onQuit: () => requestQuit(),
-  onNewPairingCode: () => link.send({ t: 'pairing.new' }),
+  onNewPairingCode: () => capture.newPairingCode(),
+  // Demo settings apply on reload, since the renderer is built for one look.
+  onDemoOption: (key, value) => {
+    const next = new URLSearchParams(location.search);
+    next.set(key, value);
+    location.search = next.toString();
+  },
 });
 
 screens.showStart({
   defaultParticipantId: config.defaultParticipantId,
-  hostState: hello ? 'connected' : 'standalone',
-  pairingCode: hello?.pairingCode ?? null,
+  mode: DEMO ? 'demo' : capture.hello ? 'host' : 'standalone',
+  pairingCode: capture.hello?.pairingCode ?? null,
   adminLinks: [],
   remoteControlled: config.remoteControl.enabled,
+  demo: preset
+    ? { preset: preset.id, presets: DEMO_PRESETS.map(({ id, label }) => ({ id, label })), world: params.get('world') ?? config.appearance.world }
+    : undefined,
 });
 
 function startSession(participantId: string): void {
   if (exp) return;
   const sessionId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
-  link.registerSession({ sessionId, participantId, version: GTBALLDROP_VERSION, startedAt, config });
+  capture.openSession({ sessionId, participantId, version: GTBALLDROP_VERSION, startedAt, config });
   const recorder = new SessionRecorder(sessionId, () => Math.round(performance.timeOrigin + performance.now()));
   exp = new Experiment({ config, participantId, seed: config.seed ?? randomSeed(), version: GTBALLDROP_VERSION, sessionId });
   exp.on((e) => {
     pending.push(recorder.record(e));
     renderer.handleEvent(e);
+    if (e.type === 'block-ended' || e.type === 'calibration-ended') results.push(e);
   });
   screens.hide();
   if (!params.has('nofullscreen') && !document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -189,14 +198,19 @@ async function quitApp(): Promise<void> {
   quitting = true;
   flush();
   screens.showMessage('GTBallDrop', 'Saving session data...');
-  const deadline = performance.now() + 5000;
-  while (!(await replicator.drained()) && performance.now() < deadline) await new Promise((r) => setTimeout(r, 100));
-  const saved = await replicator.drained();
-  link.send({ t: 'app.quit' });
-  screens.showMessage(
-    'GTBallDrop',
-    saved ? 'Session saved. You may close this window.' : 'Could not reach the local host: data is kept in browser storage and will be sent when it is back.',
+  const r = await capture.finish();
+  screens.showFinished({ message: r.message, downloads: r.downloads, resultsHtml: DEMO ? resultsTable() : undefined, playAgain: DEMO });
+}
+
+/** Demo only: a small per-block score table (the lab version shows participants no scores). */
+function resultsTable(): string {
+  if (!results.length) return '';
+  const rows = results.map((e) =>
+    e.type === 'calibration-ended'
+      ? `<tr><td>Calibration result</td><td colspan="3">speed ${e.ballSpeed.toPrecision(3)}, a ball every ${e.spawnTimeMs} ms</td></tr>`
+      : `<tr><td>Block ${e.block + 1}</td><td>${e.caught}</td><td>${e.missed}</td><td>${Math.round((100 * e.caught) / Math.max(1, e.caught + e.missed))}%</td></tr>`,
   );
+  return `<table class="results"><tr><th></th><th>Caught</th><th>Missed</th><th>Rate</th></tr>${rows.join('')}</table>`;
 }
 
 // ---- main loop ----------------------------------------------------------------------------
@@ -206,8 +220,10 @@ function syncScreens(): void {
   document.body.classList.toggle('playing', !!exp && !quitting && exp.status().phase === 'running' && !exp.status().screen);
   if (!exp || quitting) return;
   const st = exp.status();
-  if (st.phase === 'ended' && !st.screen) {
-    void quitApp(); // aborted with the quit key
+  // Ended: aborted with the quit key (no screen), or, in the demo, finished (skip the
+  // "notify the administrator" screen and go straight to the results).
+  if (st.phase === 'ended' && (!st.screen || DEMO)) {
+    void quitApp();
     return;
   }
   if (st.screen) screens.showPause(st.screen.id, st.screen.interactive);

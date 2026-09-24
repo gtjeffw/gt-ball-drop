@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/vite.config.ts", "tools/*.ts", "tools/test", "vitest.config.ts"]
+  "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/test", "apps/*/vite.config.ts", "tools/*.ts", "tools/test", "vitest.config.ts"]
 }

@@ -22,6 +22,7 @@ npm run desktop           # the desktop app (participant); npm run desktop:admin
 ```
 
 **Running experiments:** see [docs/INSTRUCTIONS.md](docs/INSTRUCTIONS.md) (setup, settings, data files).
+**Web demo** (static site, e.g. Cloudflare Pages): see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and extension points
 (cloud sink, relay, PAKE). See [docs/FIDELITY.md](docs/FIDELITY.md) for what matches the
