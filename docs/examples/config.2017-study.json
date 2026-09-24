@@ -1,0 +1,35 @@
+{
+  "defaultParticipantId": "GEORGEPBURDELL000",
+  "numBlocks": 3,
+  "numTrials": 300,
+  "onlyCreateNumTrialsBalls": true,
+  "ballSpawnTimeMs": 400,
+  "ballSpeed": 0.01,
+  "dropMode": "neighborhood",
+  "laneNeighborhoodSize": 3,
+  "laneChangeStayChance": 0,
+  "appearance": {
+    "world": "clean",
+    "flameHeightScale": 1,
+    "flameOpacity": 1,
+    "modelShading": 0
+  },
+  "calibration": {
+    "enabled": false,
+    "maxRefinements": 5,
+    "speedIncr": 0.003,
+    "speedMin": 0.001,
+    "spawnTimeIncrMs": 200,
+    "spawnTimeMinMs": 100,
+    "targetAvg": 0.8,
+    "targetAvgErr": 0.05,
+    "numTrials": 5,
+    "startWithPractice": true,
+    "autoContinueMs": 2000
+  },
+  "remoteControl": {
+    "enabled": false,
+    "infiniteTrials": false,
+    "infiniteBlocks": false
+  }
+}

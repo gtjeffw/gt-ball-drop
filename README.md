@@ -18,7 +18,10 @@ npm install
 npm test
 npm run dev:participant   # http://localhost:5173
 npm run dev:admin         # http://localhost:5174, then enter 127.0.0.1:4280 and the pairing code
+npm run desktop           # the desktop app (participant); npm run desktop:admin for the admin
 ```
+
+**Running experiments:** see [docs/INSTRUCTIONS.md](docs/INSTRUCTIONS.md) (setup, settings, data files).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and extension points
 (cloud sink, relay, PAKE). See [docs/FIDELITY.md](docs/FIDELITY.md) for what matches the

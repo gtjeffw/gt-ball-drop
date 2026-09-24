@@ -210,8 +210,8 @@ describe('Experiment: calibration', () => {
   });
 });
 
-describe('Experiment: admin control', () => {
-  const cfg = { calibration: { enabled: false }, numBlocks: 3, numTrials: 3, adminControl: { enabled: true } };
+describe('Experiment: remote control', () => {
+  const cfg = { calibration: { enabled: false }, numBlocks: 3, numTrials: 3, remoteControl: { enabled: true } };
 
   it('break screens ignore the participant and wait for the admin', () => {
     const { exp, events } = make(cfg);
@@ -219,7 +219,7 @@ describe('Experiment: admin control', () => {
     expect(exp.status().screen).toEqual({ id: 'block-intro', interactive: false });
     exp.dispatch({ type: 'continue', source: 'participant' });
     expect(exp.status().phase).toBe('paused');
-    exp.dispatch({ type: 'admin', command: 'block-start' });
+    exp.dispatch({ type: 'remote', command: 'block-start', source: 'test' });
     expect(exp.status().phase).toBe('running');
     expect(ofType(events, 'screen-dismissed')[0]!.by).toBe('admin');
   });
@@ -232,14 +232,14 @@ describe('Experiment: admin control', () => {
   });
 
   it('block-end ends the running block (forced); ignored while paused', () => {
-    const { exp, events } = make({ ...cfg, adminControl: { enabled: true, infiniteTrials: true } });
+    const { exp, events } = make({ ...cfg, remoteControl: { enabled: true, infiniteTrials: true } });
     exp.start();
-    exp.dispatch({ type: 'admin', command: 'block-end' });
-    expect(ofType(events, 'admin-command').at(-1)).toMatchObject({ command: 'block-end', accepted: false });
-    exp.dispatch({ type: 'admin', command: 'block-start' });
+    exp.dispatch({ type: 'remote', command: 'block-end', source: 'test' });
+    expect(ofType(events, 'remote-command').at(-1)).toMatchObject({ command: 'block-end', accepted: false });
+    exp.dispatch({ type: 'remote', command: 'block-start', source: 'test' });
     run(exp, perfectBot, 5_000, { pressContinue: false });
     expect(ofType(events, 'block-ended')).toHaveLength(0); // infinite trials: only the admin ends blocks
-    exp.dispatch({ type: 'admin', command: 'block-end' });
+    exp.dispatch({ type: 'remote', command: 'block-end', source: 'test' });
     exp.advance(1);
     expect(ofType(events, 'block-ended')[0]).toMatchObject({ block: 0, forcedByAdmin: true });
     expect(exp.status().screen?.id).toBe('block-break');
@@ -248,20 +248,20 @@ describe('Experiment: admin control', () => {
   it('quit ends the block and the experiment', () => {
     const { exp } = make(cfg);
     exp.start();
-    exp.dispatch({ type: 'admin', command: 'block-start' });
+    exp.dispatch({ type: 'remote', command: 'block-start', source: 'test' });
     exp.advance(1000);
-    exp.dispatch({ type: 'admin', command: 'quit' });
+    exp.dispatch({ type: 'remote', command: 'quit', source: 'test' });
     exp.advance(1);
     expect(exp.status().phase).toBe('ended');
     expect(exp.status().screen?.id).toBe('complete');
   });
 
-  it('admin commands are rejected when admin control is off', () => {
+  it('remote commands are rejected when remote control is off', () => {
     const { exp, events } = make({ calibration: { enabled: false } });
     exp.start();
-    exp.dispatch({ type: 'admin', command: 'block-start' });
+    exp.dispatch({ type: 'remote', command: 'block-start', source: 'test' });
     expect(exp.status().phase).toBe('paused');
-    expect(ofType(events, 'admin-command')[0]!.accepted).toBe(false);
+    expect(ofType(events, 'remote-command')[0]!.accepted).toBe(false);
   });
 });
 

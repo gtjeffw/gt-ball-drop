@@ -123,10 +123,28 @@ Implement `PairingStrategy` with id `pake-v1`, and list it first on both sides:
 so v1 clients keep working. A strategy only has to produce a shared `secret`. The key
 schedule, key confirmation and channel are shared.
 
+## Control API (other programs)
+
+Both hosts serve `GET /api/status`, `POST /api/command` and `WS /api/events` on loopback
+(`packages/host/src/control-api.ts`, documented for users in INSTRUCTIONS.md §3.2).
+Each host implements `ControlBackend`:
+
+* **The participant host** delivers a command to the game page, like a peer command.
+* **The admin host** forwards it over the SecureChannel.
+
+So a program on either machine drives the experiment without implementing pairing or
+crypto. The experiment treats these exactly like admin-panel commands (`remote-command`
+events, with `source` saying which sent them). A POST waits up to 2 s for that event to
+report `accepted`.
+
 ## Security model (LAN)
 
 * **`/ui`** (the page ↔ its own host): loopback only, plus an Origin allowlist. Otherwise
   any web page open in the machine's browser could drive the experiment.
+* **`/api/*`** (the control API): loopback only. A request carrying any other browser
+  Origin is refused, and `POST /api/command` requires `Content-Type: application/json`,
+  which a web page can't send cross-origin without a CORS preflight that the host never
+  answers. So other programs on the machine can use it, but web pages can't.
 * **`/peer`** (host ↔ host): reachable from the LAN, but a peer must complete the handshake:
   * The pairing code is 128 bits and is never sent. Only an HMAC-derived id is.
   * Each connection gets fresh keys: HKDF over the secret, both nonces and the transcript hash.
@@ -156,12 +174,12 @@ npm run typecheck
 npm run dev:participant     # host :4280 + game UI http://localhost:5173
 npm run dev:admin           # host :4290 + admin UI http://localhost:5174
 npm run desktop             # build the UIs and run the Electron app (participant, kiosk)
-npm run start:admin -w @gtbd/desktop
+npm run desktop:admin       # the same, admin role
+npm run convert-c4-config -- variables.cfg config.json   # one-time conversion of an old C4 config
 ```
 
-Useful flags for the desktop app: `--role=admin`, `--data=DIR`, `--port=N`, `--windowed`.
+Useful flags for the desktop app: `--data=DIR`, `--port=N`, `--windowed`.
 Data goes to `<userData>/<role>/` by default. In dev it goes to `./data/<role>/`.
 
-Experiment config: `<dataDir>/config.json`, created with the defaults on first run.
-Alternatively, drop an old C4 `variables.cfg` into the data dir and it is imported when
-there is no `config.json`.
+Experiment config: `<dataDir>/config.json`, created with the defaults on first run. The app
+reads nothing else; old C4 configs go through the converter in `tools/` once.

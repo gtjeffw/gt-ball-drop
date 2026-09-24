@@ -50,7 +50,8 @@ The C4 build shipped two world versions, and `config.world` picks one:
 
 Both worlds share the rest: the geometry, the fog space, one light, and the ambient light.
 
-A lab's `variables.cfg` could override `GTBallWorldFilePath`, and the importer maps that.
+A lab's `variables.cfg` could override `GTBallWorldFilePath`; the one-time converter
+(`tools/convert-c4-config.ts`) maps it to `appearance.world`.
 The URL parameter `?world=classic` forces a world for side-by-side comparison.
 
 How the skybox was recovered:
@@ -164,7 +165,7 @@ Checked against the C++ and the C4 engine source.
 ## Faithful on purpose (including odd behavior)
 
 * All the defaults from `Game::Game()` (see `packages/protocol/src/config.ts`), and every
-  `GTBall*` variable name, via `importLegacyVariables`.
+  `GTBall*` variable name, via the one-time converter `tools/convert-c4-config.ts`.
 * Legacy log lines and their order, including the `*_DESCRIPT` header lines and the
   column numbering in `BALL_CATCHER_LEFT/RIGHT` (+3 = far left, left press increments).
 * Experiment time pauses during every dialog.

@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws';
 import {
   GameToHostSchema,
   PeerMessageSchema,
+  type ControlCommand,
   type EventEnvelope,
   type ExperimentConfig,
   type ExperimentStatus,
@@ -21,6 +22,7 @@ import {
   type WebSocketLike,
 } from '@gtbd/secure';
 import { SessionFiles } from '@gtbd/sinks/node';
+import { ControlFeed, type ControlBackend } from './control-api';
 import type { StateFile } from './state';
 
 const PEER_BATCH = 500;
@@ -46,13 +48,14 @@ export interface ParticipantHostOptions {
  * The participant machine's host. It is the durable sink for the game page's events, the
  * primary copy of every session, and the source for admin mirrors.
  */
-export class ParticipantHost {
+export class ParticipantHost implements ControlBackend {
   private readonly uiClients = new Set<WebSocket>();
   private readonly peers = new Set<Peer>();
   private readonly sessions = new Map<string, SessionFiles>();
   private current: SessionFiles | null = null;
   private latestStatus: ExperimentStatus | null = null;
   private readonly sessionsRoot: string;
+  private readonly feed = new ControlFeed();
 
   constructor(private readonly opts: ParticipantHostOptions) {
     this.sessionsRoot = path.join(opts.dataDir, 'sessions');
@@ -72,6 +75,26 @@ export class ParticipantHost {
     this.opts.log(`Pairing code for the admin machine: ${code}`);
     this.broadcastUi({ t: 'pairing', code });
     return code;
+  }
+
+  // ---- control API backend (a program on this machine) ------------------------------------
+
+  get connected(): boolean {
+    return this.uiClients.size > 0;
+  }
+
+  get status(): ExperimentStatus | null {
+    return this.latestStatus;
+  }
+
+  send(command: ControlCommand): string | null {
+    if (!this.connected) return 'The game page is not open';
+    this.broadcastUi({ t: 'cmd', command, source: 'control-api@local' });
+    return null;
+  }
+
+  subscribe(listener: Parameters<ControlBackend['subscribe']>[0]): () => void {
+    return this.feed.subscribe(listener);
   }
 
   // ---- game UI link ---------------------------------------------------------------------
@@ -119,14 +142,17 @@ export class ParticipantHost {
             this.sendUi(ws, { t: 'error', message: `unknown session ${msg.sessionId}` });
             return;
           }
+          const before = sf.lastSeq;
           const seq = sf.append(msg.events as EventEnvelope[]);
           this.sendUi(ws, { t: 'ack', sessionId: msg.sessionId, seq });
+          this.feed.events((msg.events as EventEnvelope[]).filter((e) => e.seq > before && e.seq <= seq));
           if (sf !== this.current) this.setCurrent(sf);
           for (const p of this.peers) this.pushToPeer(p);
           break;
         }
         case 'status':
           this.latestStatus = msg.status as unknown as ExperimentStatus;
+          this.feed.status(this.latestStatus);
           for (const p of this.peers) void p.channel.send({ t: 'status', status: this.latestStatus } satisfies PeerMessage);
           break;
         case 'pairing.new':
@@ -204,7 +230,7 @@ export class ParticipantHost {
   private handlePeerMessage(peer: Peer, msg: PeerMessage): void {
     switch (msg.t) {
       case 'cmd':
-        this.broadcastUi({ t: 'cmd', command: msg.command, peerId: peer.peerNodeId });
+        this.broadcastUi({ t: 'cmd', command: msg.command, source: `${msg.source ?? 'admin-panel'}@${peer.peerNodeId}` });
         break;
       case 'sync':
         if (this.current && msg.sessionId === this.current.meta.sessionId) {

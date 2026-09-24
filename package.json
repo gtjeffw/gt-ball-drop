@@ -18,7 +18,9 @@
     "build:web": "npm run build -w @gtbd/game-web -w @gtbd/admin-web",
     "dev:participant": "node scripts/dev.mjs participant",
     "dev:admin": "node scripts/dev.mjs admin",
-    "desktop": "npm run build:web && npm run start -w @gtbd/desktop"
+    "desktop": "npm run build:web && npm run build -w @gtbd/desktop && electron apps/desktop",
+    "desktop:admin": "npm run build:web && npm run build -w @gtbd/desktop && electron apps/desktop --role=admin",
+    "convert-c4-config": "tsx tools/convert-c4-config.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

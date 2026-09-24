@@ -1,5 +1,5 @@
 import type {
-  AdminCommandName,
+  ControlCommand,
   BallView,
   ContinueSource,
   DomainEvent,
@@ -26,7 +26,7 @@ export type ExperimentCommand =
   | { type: 'move'; direction: 'left' | 'right' }
   | { type: 'continue'; source: Exclude<ContinueSource, 'admin' | 'auto'> }
   | { type: 'quit-key' }
-  | { type: 'admin'; command: AdminCommandName }
+  | { type: 'remote'; command: ControlCommand; source: string }
   | { type: 'admin-link'; status: 'connected' | 'lost'; peerId: string }
   | { type: 'clock-sync'; peerId: string; offsetMs: number; rttMs: number };
 
@@ -64,7 +64,7 @@ export class Experiment {
   private readonly cfg: ExperimentConfig;
   private readonly rng: Rng;
   private readonly listeners = new Set<(e: DomainEvent) => void>();
-  private readonly adminControlled: boolean;
+  private readonly remoteControlled: boolean;
 
   private tExp = 0;
   private tSys = 0;
@@ -106,7 +106,7 @@ export class Experiment {
   constructor(private readonly init: ExperimentInit) {
     this.cfg = init.config;
     this.rng = new Rng(init.seed);
-    this.adminControlled = this.cfg.adminControl.enabled;
+    this.remoteControlled = this.cfg.remoteControl.enabled;
     this.spring.setDampingCritical();
     this.calibrating = this.cfg.calibration.enabled;
     this.numBlocks = this.cfg.numBlocks;
@@ -138,7 +138,7 @@ export class Experiment {
       this.calibBlock = this.cfg.calibration.startWithPractice ? -1 : 0;
       this.emit({ type: 'calibration-started' });
       this.emitCalibrationBlockStarted();
-      this.showScreen('calibration-intro', !this.adminControlled);
+      this.showScreen('calibration-intro', !this.remoteControlled);
     } else {
       this.resetForNextBlock();
       this.announceBlock = true;
@@ -183,8 +183,8 @@ export class Experiment {
         this.screen = null;
         this.end();
         return;
-      case 'admin':
-        this.handleAdmin(cmd.command);
+      case 'remote':
+        this.handleRemote(cmd.command, cmd.source);
         return;
       case 'admin-link':
         this.emit({ type: 'admin-link', status: cmd.status, peerId: cmd.peerId });
@@ -201,7 +201,7 @@ export class Experiment {
       participantId: this.init.participantId,
       phase: this.phase,
       screen: this.screen ? { id: this.screen.id, interactive: this.screen.interactive } : null,
-      adminControlled: this.adminControlled,
+      remoteControlled: this.remoteControlled,
       calibrating: this.calibrating,
       calibBlock: this.calibBlock,
       block: this.blockIndex,
@@ -289,8 +289,8 @@ export class Experiment {
 
   /** The part of BallMagister::Update that runs while unpaused. */
   private update(): void {
-    const infiniteTrials = this.adminControlled && this.cfg.adminControl.infiniteTrials;
-    if ((this.adminControlled && this.forceBlockEnd) || ((this.calibrating || !infiniteTrials) && this.destroyed >= this.numTrials)) {
+    const infiniteTrials = this.remoteControlled && this.cfg.remoteControl.infiniteTrials;
+    if ((this.remoteControlled && this.forceBlockEnd) || ((this.calibrating || !infiniteTrials) && this.destroyed >= this.numTrials)) {
       const forced = this.forceBlockEnd;
       this.forceBlockEnd = false;
       if (this.calibrating) this.endCalibrationBlock(forced);
@@ -300,7 +300,7 @@ export class Experiment {
 
     if (this.announceBlock) {
       this.announceBlock = false;
-      if (this.blockIndex === 0) this.showScreen('block-intro', !this.adminControlled);
+      if (this.blockIndex === 0) this.showScreen('block-intro', !this.remoteControlled);
       this.emit({ type: 'block-started', block: this.blockIndex });
       // The original goes on to the spawn check while paused, so a ball could appear behind
       // the intro screen. Wait until it is dismissed.
@@ -394,11 +394,11 @@ export class Experiment {
       forcedByAdmin: forced,
     });
     this.blockIndex++;
-    if ((this.adminControlled && this.forceGameEnd) || this.blockIndex >= this.numBlocks) {
+    if ((this.remoteControlled && this.forceGameEnd) || this.blockIndex >= this.numBlocks) {
       this.finishExperiment(this.forceGameEnd);
     } else {
       this.resetForNextBlock();
-      this.showScreen('block-break', !this.adminControlled);
+      this.showScreen('block-break', !this.remoteControlled);
       this.announceBlock = true;
     }
   }
@@ -414,8 +414,8 @@ export class Experiment {
   private resetForNextBlock(): void {
     this.clearBlockState();
     this.onlyCreateNumTrials = this.cfg.onlyCreateNumTrialsBalls;
-    this.numTrials = this.adminControlled && this.cfg.adminControl.infiniteTrials ? INFINITE : this.cfg.numTrials;
-    if (this.adminControlled && this.cfg.adminControl.infiniteBlocks) this.numBlocks = INFINITE;
+    this.numTrials = this.remoteControlled && this.cfg.remoteControl.infiniteTrials ? INFINITE : this.cfg.numTrials;
+    if (this.remoteControlled && this.cfg.remoteControl.infiniteBlocks) this.numBlocks = INFINITE;
     this.autoContinue = false;
   }
 
@@ -465,9 +465,9 @@ export class Experiment {
     }
   }
 
-  private handleAdmin(command: AdminCommandName): void {
+  private handleRemote(command: ControlCommand, source: string): void {
     const onBreak = this.screen !== null && this.screen.id !== 'complete';
-    let accepted = this.adminControlled && this.phase !== 'ended' && this.phase !== 'not-started';
+    let accepted = this.remoteControlled && this.phase !== 'ended' && this.phase !== 'not-started';
     if (accepted) {
       switch (command) {
         case 'block-start':
@@ -485,7 +485,7 @@ export class Experiment {
           break;
       }
     }
-    this.emit({ type: 'admin-command', command, accepted });
+    this.emit({ type: 'remote-command', command, accepted, source });
     if (accepted && (command === 'block-start' || command === 'quit') && onBreak) this.dismissScreen('admin');
   }
 

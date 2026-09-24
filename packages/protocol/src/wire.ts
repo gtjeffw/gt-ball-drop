@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { EventEnvelopeSchema } from './events';
-import type { AdminCommandName, EventEnvelope } from './events';
+import type { ControlCommand, EventEnvelope } from './events';
 import type { ExperimentConfig } from './config';
 import type { ExperimentStatus } from './status';
 
@@ -48,7 +48,7 @@ export type HostToGame =
   | { t: 'hello'; role: 'participant'; hostId: string; config: ExperimentConfig; pairingCode: string | null }
   | { t: 'session.opened'; sessionId: string; logDir: string }
   | { t: 'ack'; sessionId: string; seq: number }
-  | { t: 'cmd'; command: AdminCommandName; peerId: string }
+  | { t: 'cmd'; command: ControlCommand; source: string }
   | { t: 'admin-link'; status: 'connected' | 'lost'; peerId: string }
   | { t: 'clock-sync'; peerId: string; offsetMs: number; rttMs: number }
   | { t: 'pairing'; code: string | null }
@@ -64,7 +64,7 @@ export const AdminUiToHostSchema = z.discriminatedUnion('t', [
 export type AdminUiToHost =
   | { t: 'connect'; address: string; pairingCode?: string }
   | { t: 'disconnect' }
-  | { t: 'cmd'; command: AdminCommandName };
+  | { t: 'cmd'; command: ControlCommand };
 
 export interface PeerSummary {
   address: string;
@@ -93,7 +93,7 @@ export type AdminHostToUi =
 
 export const PeerMessageSchema = z.discriminatedUnion('t', [
   // admin -> participant
-  z.object({ t: z.literal('cmd'), command: AdminCommandSchema }),
+  z.object({ t: z.literal('cmd'), command: AdminCommandSchema, source: z.string().max(64).optional() }),
   z.object({ t: z.literal('sync'), sessionId: z.string().nullable(), lastSeq: z.number().int() }),
   z.object({ t: z.literal('ack'), sessionId: z.string(), seq: z.number().int() }),
   z.object({ t: z.literal('ping'), t0: z.number() }),
@@ -105,7 +105,8 @@ export const PeerMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('pong'), t0: z.number(), t1: z.number() }),
 ]);
 export type PeerMessage =
-  | { t: 'cmd'; command: AdminCommandName }
+  /** source: 'admin-panel' or 'control-api' */
+  | { t: 'cmd'; command: ControlCommand; source?: string }
   | { t: 'sync'; sessionId: string | null; lastSeq: number }
   | { t: 'ack'; sessionId: string; seq: number }
   | { t: 'ping'; t0: number }

@@ -158,6 +158,58 @@ describe('participant + admin hosts over a real LAN socket', () => {
     expect(err.peer.error).toMatch(/not recognised/);
   });
 
+  it('control API on the participant machine: a local program drives the game', async () => {
+    const { p, game } = await setup();
+    const sessionId = 'sess-api';
+    game.send({ t: 'session.open', sessionId, participantId: 'P1', version: 'test', startedAt: new Date().toISOString(), config: DEFAULT_CONFIG });
+    await game.waitFor((m) => m.t === 'session.opened');
+    // The (fake) game page answers every command with the experiment's remote-command event.
+    let seq = 0;
+    game.ws.on('message', (raw) => {
+      const m = JSON.parse(String(raw));
+      if (m.t !== 'cmd') return;
+      const env = { schema: 1, sessionId, seq: seq++, tWall: Date.now(), event: { type: 'remote-command', command: m.command, accepted: true, source: m.source, tExp: 0, tSys: 0 } };
+      game.send({ t: 'events', sessionId, events: [env] });
+    });
+
+    const res = await fetch(`http://127.0.0.1:${p.port}/api/command`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: 'block-start' }) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sent: true, accepted: true });
+    const cmd = await game.waitFor((m) => m.t === 'cmd');
+    expect(cmd).toEqual({ t: 'cmd', command: 'block-start', source: 'control-api@local' });
+
+    const st = await (await fetch(`http://127.0.0.1:${p.port}/api/status`)).json();
+    expect(st.connected).toBe(true);
+  });
+
+  it('control API on the admin machine: commands are forwarded over the encrypted link', async () => {
+    const { a, game, adminUi, code, address } = await setup();
+    adminUi.send({ t: 'connect', address, pairingCode: code });
+    await adminUi.waitFor((m) => m.t === 'peer' && m.peer.state === 'connected');
+    const ev = await client(`ws://127.0.0.1:${a.port}/api/events`);
+    await ev.waitFor((m) => m.t === 'status');
+    ev.send({ t: 'cmd', command: 'quit' });
+    const cmd = await game.waitFor((m) => m.t === 'cmd');
+    expect(cmd.command).toBe('quit');
+    expect(cmd.source).toMatch(/^control-api@a-[0-9a-f]+$/);
+  });
+
+  it('control API refuses browsers and malformed requests', async () => {
+    const { p, game } = await setup();
+    const url = `http://127.0.0.1:${p.port}/api/command`;
+    const body = JSON.stringify({ command: 'block-start' });
+    // A web page can only send text/plain without a preflight: refused.
+    expect((await fetch(url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body })).status).toBe(415);
+    expect((await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://evil.example' }, body })).status).toBe(403);
+    expect((await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"command":"jump"}' })).status).toBe(400);
+    // No game page open: nothing can receive the command.
+    game.ws.close();
+    await waitUntil(() => !p.participant!.connected);
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    expect(r.status).toBe(409);
+    await expect(client(`ws://127.0.0.1:${p.port}/api/events`, { Origin: 'http://evil.example' })).rejects.toThrow(/403/);
+  });
+
   it('refuses UI connections from a foreign Origin', async () => {
     const { p } = await setup();
     await expect(client(`ws://127.0.0.1:${p.port}/ui`, { Origin: 'http://evil.example' })).rejects.toThrow(/403/);

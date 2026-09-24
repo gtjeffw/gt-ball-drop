@@ -16,5 +16,6 @@
   "dependencies": {
     "@gtbd/host": "*",
     "@gtbd/protocol": "*"
-  }
+  },
+  "productName": "GT Ball Drop"
 }

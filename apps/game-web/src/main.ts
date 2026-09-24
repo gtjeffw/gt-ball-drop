@@ -64,7 +64,7 @@ link.on((m) => {
       screens.updateStart({ hostState: 'connected', pairingCode: m.pairingCode });
       break;
     case 'cmd':
-      exp?.dispatch({ type: 'admin', command: m.command });
+      exp?.dispatch({ type: 'remote', command: m.command, source: m.source });
       break;
     case 'admin-link':
       if (m.status === 'connected') adminLinks.add(m.peerId);
@@ -98,7 +98,7 @@ screens.showStart({
   hostState: hello ? 'connected' : 'standalone',
   pairingCode: hello?.pairingCode ?? null,
   adminLinks: [],
-  adminControlled: config.adminControl.enabled,
+  remoteControlled: config.remoteControl.enabled,
 });
 
 function startSession(participantId: string): void {

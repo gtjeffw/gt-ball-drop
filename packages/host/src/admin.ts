@@ -5,6 +5,7 @@ import {
   AdminUiToHostSchema,
   PeerMessageSchema,
   type AdminHostToUi,
+  type ControlCommand,
   type EventEnvelope,
   type ExperimentStatus,
   type PeerMessage,
@@ -12,6 +13,7 @@ import {
 } from '@gtbd/protocol';
 import { handshake, pairingIdFor, parsePairingCode, TokenPairing, webSocketDuplex, type SecureChannel, type WebSocketLike } from '@gtbd/secure';
 import { SessionFiles } from '@gtbd/sinks/node';
+import { ControlFeed, type ControlBackend } from './control-api';
 import type { StateFile } from './state';
 
 const PING_EVERY_MS = 10_000;
@@ -28,17 +30,18 @@ export interface AdminHostOptions {
  * session, relays the admin UI's commands, and measures the clock offset between the two
  * machines.
  */
-export class AdminHost {
+export class AdminHost implements ControlBackend {
   private readonly uiClients = new Set<WebSocket>();
   private channel: SecureChannel | null = null;
   private peer: PeerSummary = { address: '', state: 'disconnected', peerId: null, error: null, clock: null };
-  private status: ExperimentStatus | null = null;
+  private latestStatus: ExperimentStatus | null = null;
   private mirror: SessionFiles | null = null;
   private readonly mirrors = new Map<string, SessionFiles>();
   private readonly mirrorRoot: string;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private wantConnected = false;
+  private readonly feed = new ControlFeed();
 
   constructor(private readonly opts: AdminHostOptions) {
     this.mirrorRoot = path.join(opts.dataDir, 'mirror');
@@ -49,6 +52,26 @@ export class AdminHost {
     return this.peer;
   }
 
+  // ---- control API backend (a program on this machine, forwarded over the peer link) -----
+
+  get connected(): boolean {
+    return this.channel !== null;
+  }
+
+  get status(): ExperimentStatus | null {
+    return this.latestStatus;
+  }
+
+  send(command: ControlCommand): string | null {
+    if (!this.channel) return 'Not connected to the participant machine';
+    void this.channel.send({ t: 'cmd', command, source: 'control-api' } satisfies PeerMessage);
+    return null;
+  }
+
+  subscribe(listener: Parameters<ControlBackend['subscribe']>[0]): () => void {
+    return this.feed.subscribe(listener);
+  }
+
   handleUi(ws: WebSocket): void {
     this.uiClients.add(ws);
     this.opts.log(`Admin page connected (${this.uiClients.size} open)`);
@@ -56,7 +79,7 @@ export class AdminHost {
     const knownPeers = this.opts.state.state.pairings.map((p) => p.address).filter((a): a is string => !!a);
     this.sendUi(ws, { t: 'hello', role: 'admin', hostId: this.opts.state.state.hostId, knownPeers });
     this.sendUi(ws, { t: 'peer', peer: this.peer });
-    this.sendUi(ws, { t: 'status', status: this.status });
+    this.sendUi(ws, { t: 'status', status: this.latestStatus });
     if (this.mirror) this.sendUi(ws, { t: 'mirror', mirror: this.mirrorSummary(this.mirror) });
 
     ws.on('message', (raw) => {
@@ -70,7 +93,7 @@ export class AdminHost {
       else if (msg.t === 'disconnect') this.disconnect();
       else if (msg.t === 'cmd') {
         if (!this.channel) this.sendUi(ws, { t: 'error', message: 'Not connected to the participant machine' });
-        else void this.channel.send({ t: 'cmd', command: msg.command } satisfies PeerMessage);
+        else void this.channel.send({ t: 'cmd', command: msg.command, source: 'admin-panel' } satisfies PeerMessage);
       }
     });
   }
@@ -176,8 +199,9 @@ export class AdminHost {
   private handlePeerMessage(ch: SecureChannel, msg: PeerMessage): void {
     switch (msg.t) {
       case 'status':
-        this.status = msg.status;
+        this.latestStatus = msg.status;
         this.broadcastUi({ t: 'status', status: msg.status });
+        this.feed.status(msg.status);
         break;
       case 'session': {
         let sf = this.mirrors.get(msg.sessionId) ?? this.findMirror(msg.sessionId);
@@ -201,7 +225,9 @@ export class AdminHost {
         const before = sf.lastSeq;
         const seq = sf.append(msg.events as EventEnvelope[]);
         void ch.send({ t: 'ack', sessionId: msg.sessionId, seq } satisfies PeerMessage);
-        for (const e of msg.events as EventEnvelope[]) if (e.seq > before) this.broadcastUi({ t: 'event', envelope: e });
+        const fresh = (msg.events as EventEnvelope[]).filter((e) => e.seq > before && e.seq <= seq);
+        for (const e of fresh) this.broadcastUi({ t: 'event', envelope: e });
+        this.feed.events(fresh);
         this.broadcastUi({ t: 'mirror', mirror: this.mirrorSummary(sf) });
         break;
       }

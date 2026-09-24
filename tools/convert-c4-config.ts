@@ -1,34 +1,36 @@
-import type { DeepPartial, DropMode, ExperimentConfig } from './config';
-
 /**
- * Import a C4 `variables.cfg` from the original build. The syntax is one
- * `$name = "value";` per line. Unknown variables are reported, not rejected, so an
- * old lab config can be dropped in as-is.
+ * One-time converter from the C4 version's `variables.cfg` to a `config.json`.
+ *
+ *   npm run convert-c4-config -- path/to/variables.cfg path/to/config.json
+ *
+ * Settings the file doesn't mention get the current defaults. The app itself only ever
+ * reads config.json.
  */
-export interface LegacyImportResult {
-  config: DeepPartial<ExperimentConfig>;
-  /** Variables that are recognised but have no effect in the web port (model paths, unknown worlds). */
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import { resolveConfig, type DeepPartial, type DropMode, type ExperimentConfig } from '@gtbd/protocol';
+
+export interface ConversionResult {
+  config: ExperimentConfig;
+  /** GT Ball Drop variables with no equivalent (model paths, unknown world files). */
   ignored: string[];
-  /** Variables that are not GT Ball Drop settings at all (engine settings like $displayWidth). */
+  /** Other variables in the file, e.g. C4 engine settings like $displayWidth. */
   unknown: string[];
 }
 
 const DROP_MODES: Record<string, DropMode> = { '0': 'random', '1': 'lane', '2': 'neighborhood' };
 
-export function parseLegacyVariables(text: string): Record<string, string> {
+export function convertC4Config(text: string): ConversionResult {
   const vars: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const m = /^\s*\$(\w+)\s*=\s*"([^"]*)"\s*;?\s*$/.exec(line);
     if (m) vars[m[1]!] = m[2]!;
   }
-  return vars;
-}
 
-export function importLegacyVariables(text: string): LegacyImportResult {
-  const vars = parseLegacyVariables(text);
   const config: DeepPartial<ExperimentConfig> = {};
   const calibration: NonNullable<DeepPartial<ExperimentConfig>['calibration']> = {};
-  const adminControl: NonNullable<DeepPartial<ExperimentConfig>['adminControl']> = {};
+  const remoteControl: NonNullable<DeepPartial<ExperimentConfig>['remoteControl']> = {};
+  const appearance: NonNullable<DeepPartial<ExperimentConfig>['appearance']> = {};
   const ignored: string[] = [];
   const unknown: string[] = [];
 
@@ -46,13 +48,11 @@ export function importLegacyVariables(text: string): LegacyImportResult {
       case 'GTBallSpeed': config.ballSpeed = num(value); break;
       case 'GTBallLaneChangeStayChance': config.laneChangeStayChance = num(value); break;
       case 'GTBallDropLaneNeighborhoodSize': config.laneNeighborhoodSize = Math.max(1, int(value)); break;
-      case 'GTBallDropMode':
-        // The original falls back to lane mode on a bad value; do the same.
-        config.dropMode = DROP_MODES[value] ?? 'lane';
-        break;
-      case 'GTBallNetworkSlaveMode': adminControl.enabled = bool(value); break;
-      case 'GTBallNetworkForceInfiniteTrial': adminControl.infiniteTrials = bool(value); break;
-      case 'GTBallNetworkForceInfiniteBlock': adminControl.infiniteBlocks = bool(value); break;
+      // The C4 version fell back to lane mode on a bad value.
+      case 'GTBallDropMode': config.dropMode = DROP_MODES[value] ?? 'lane'; break;
+      case 'GTBallNetworkSlaveMode': remoteControl.enabled = bool(value); break;
+      case 'GTBallNetworkForceInfiniteTrial': remoteControl.infiniteTrials = bool(value); break;
+      case 'GTBallNetworkForceInfiniteBlock': remoteControl.infiniteBlocks = bool(value); break;
       case 'GTBallCalMode': calibration.enabled = bool(value); break;
       case 'GTBallCalMaxRefinements': calibration.maxRefinements = int(value); break;
       case 'GTBallCalSpeedIncr': calibration.speedIncr = num(value); break;
@@ -64,8 +64,8 @@ export function importLegacyVariables(text: string): LegacyImportResult {
       case 'GTBallCalNumTrials': calibration.numTrials = int(value); break;
       case 'GTBallCallStartWithPractice': calibration.startWithPractice = bool(value); break;
       case 'GTBallWorldFilePath':
-        if (/_clean$/i.test(value)) config.appearance = { world: 'clean' };
-        else if (/GTBallDrop(_NO_PT_LIGHTS)?$/i.test(value)) config.appearance = { world: 'classic' };
+        if (/_clean$/i.test(value)) appearance.world = 'clean';
+        else if (/GTBallDrop(_NO_PT_LIGHTS)?$/i.test(value)) appearance.world = 'classic';
         else ignored.push(name);
         break;
       case 'GTBallCatcherModelPath':
@@ -77,6 +77,24 @@ export function importLegacyVariables(text: string): LegacyImportResult {
     }
   }
   if (Object.keys(calibration).length) config.calibration = calibration;
-  if (Object.keys(adminControl).length) config.adminControl = adminControl;
-  return { config, ignored, unknown };
+  if (Object.keys(remoteControl).length) config.remoteControl = remoteControl;
+  if (Object.keys(appearance).length) config.appearance = appearance;
+  return { config: resolveConfig(config), ignored, unknown };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [input, output] = process.argv.slice(2);
+  if (!input) {
+    console.error('usage: npm run convert-c4-config -- <variables.cfg> [config.json]');
+    process.exit(2);
+  }
+  const { config, ignored } = convertC4Config(fs.readFileSync(input, 'utf8'));
+  const json = JSON.stringify(config, null, 2) + '\n';
+  if (output) {
+    fs.writeFileSync(output, json);
+    console.error(`wrote ${output}`);
+  } else {
+    process.stdout.write(json);
+  }
+  if (ignored.length) console.error(`no equivalent, not converted: ${ignored.join(', ')}`);
 }

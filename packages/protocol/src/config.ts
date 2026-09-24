@@ -1,107 +1,95 @@
 import { z } from 'zod';
 
-/**
- * Experiment configuration. Defaults match the C4 original's `Game::Game()` constructor
- * (GTBallDrop/Game.cpp); each field notes the legacy `variables.cfg` name it replaces.
- */
+/** Experiment configuration (config.json). docs/INSTRUCTIONS.md explains every setting. */
 export const DropModeSchema = z.enum(['random', 'lane', 'neighborhood']);
 export type DropMode = z.infer<typeof DropModeSchema>;
 
 /**
- * Which version of the C4 world to reproduce (GTBallWorldFilePath):
- *  - 'clean': world/GTBallDrop_clean, the C4 default from Oct 2012 on. No skybox, red pit flames.
- *  - 'classic': world/GTBallDrop_NO_PT_LIGHTS, the C4 default before that. "Bright" skybox,
- *    yellow pit flames. The port's default.
+ * The scene's look (see docs/FIDELITY.md for its origins):
+ *  - 'classic': cloudy sky, yellow pit flames (the default)
+ *  - 'clean': pale-yellow background, red pit flames
  */
 export const WorldSchema = z.enum(['clean', 'classic']);
 export type World = z.infer<typeof WorldSchema>;
 
 /** Visual settings. Logged with every session, since they change what participants see. */
 export const AppearanceConfigSchema = z.object({
-  /** GTBallWorldFilePath. Visual only: it doesn't change the geometry or the logic. */
+  /** Visual only: the geometry and the logic are the same in both. */
   world: WorldSchema,
-  /**
-   * Height of the fire-pit flames relative to the C4 original (1 = as in the world file,
-   * which reaches about 2 units above the paddle). A deliberate departure when not 1.
-   */
+  /** Fire-pit flame height (1 = full height, which reaches about 2 units above the paddle). */
   flameHeightScale: z.number().positive().max(2),
-  /** Brightness of the (additive) fire-pit flames relative to the original (1 = as in C4). */
+  /** Fire-pit flame brightness (the flames are additive). */
   flameOpacity: z.number().min(0).max(1),
   /**
-   * How much the ball and paddle are shaded by the light. 0 = exactly the C4 "high contrast"
-   * materials (May 2011 on): full diffuse plus full emission, which saturates, so they look
-   * flat apart from the specular highlight. 1 = no emission and 55% diffuse, fully shaded.
-   * Values in between blend the two, keeping the hue.
+   * How much the light shades the ball and paddle. 0 = flat, high-contrast colours with only
+   * a specular highlight. 1 = fully shaded. In between blends the two, keeping the hue.
    */
   modelShading: z.number().min(0).max(1),
 });
 export type AppearanceConfig = z.infer<typeof AppearanceConfigSchema>;
 
 export const CalibrationConfigSchema = z.object({
-  /** GTBallCalMode */
+  /** Run calibration before the experiment blocks. */
   enabled: z.boolean(),
-  /** GTBallCalMaxRefinements: direction flips allowed before calibration is forced to end. */
+  /** Direction changes allowed before calibration ends anyway. */
   maxRefinements: z.number().int().min(0),
-  /** GTBallCalSpeedIncr (units/ms) */
+  /** First speed step (units/ms). Halved at every direction change. */
   speedIncr: z.number().nonnegative(),
-  /** GTBallCalSpeedMin (units/ms) */
+  /** Slowest allowed speed (units/ms). */
   speedMin: z.number().positive(),
-  /** GTBallCalSpawnTimeIncr (ms) */
+  /** First drop-interval step (ms). Halved at every direction change. */
   spawnTimeIncrMs: z.number().int().nonnegative(),
-  /** GTBallCalSpawnTimeMin (ms) */
+  /** Shortest allowed drop interval (ms). */
   spawnTimeMinMs: z.number().int().positive(),
-  /** GTBallCalSpeedTargetAvg: target catch rate. */
+  /** Target catch rate. */
   targetAvg: z.number().min(0).max(1),
-  /** GTBallCalSpeedTargetAvgErr: tolerance around the target. */
+  /** Tolerance around the target. */
   targetAvgErr: z.number().min(0).max(1),
-  /** GTBallCalNumTrials: balls per calibration block. */
+  /** Balls per calibration block. */
   numTrials: z.number().int().positive(),
-  /** GTBallCallStartWithPractice (sic): run an unscored practice block first. */
+  /** Start with one unscored practice block. */
   startWithPractice: z.boolean(),
-  /**
-   * Auto-continue delay for intermediate calibration breaks. The original hard-coded this
-   * on with a 2 s delay (`_autoRestartCalibModeOriginalSetting = true`). 0 = wait for continue.
-   */
+  /** Calibration breaks continue by themselves after this long; 0 = wait for a continue. */
   autoContinueMs: z.number().int().nonnegative(),
 });
 
-export const AdminControlConfigSchema = z.object({
-  /** GTBallNetworkSlaveMode: breaks wait for the admin instead of the participant. */
+/** Control by the admin panel or another program (the control API) instead of the participant. */
+export const RemoteControlConfigSchema = z.object({
+  /** Break screens wait for a remote "block-start" instead of the participant. */
   enabled: z.boolean(),
-  /** GTBallNetworkForceInfiniteTrial: experiment blocks end only when the admin ends them. */
+  /** Experiment blocks end only on a remote "block-end" (numTrials is ignored). */
   infiniteTrials: z.boolean(),
-  /** GTBallNetworkForceInfiniteBlock: the experiment ends only when the admin quits it. */
+  /** The experiment ends only on a remote "quit" (numBlocks is ignored). */
   infiniteBlocks: z.boolean(),
 });
 
 export const ExperimentConfigSchema = z.object({
-  /** GTBallParticipantID: pre-filled on the start screen. */
+  /** Pre-filled on the start screen. */
   defaultParticipantId: z.string(),
-  /** GTBallNumBlocks */
+  /** Experiment blocks. */
   numBlocks: z.number().int().positive(),
-  /** GTBallNumTrials: balls per experiment block. */
+  /** Balls per experiment block; a block ends when this many are caught or missed. */
   numTrials: z.number().int().positive(),
-  /** GTBallOnlyCreateNumTrialsBalls: stop spawning once numTrials balls exist in the block. */
+  /** Stop dropping once numTrials balls have been dropped in the block. */
   onlyCreateNumTrialsBalls: z.boolean(),
-  /** GTBallSpawnTimeMS */
+  /** Time between drops (ms). */
   ballSpawnTimeMs: z.number().int().positive(),
-  /** GTBallSpeed (units/ms) */
+  /** Fall speed (units/ms). */
   ballSpeed: z.number().positive(),
-  /** GTBallDropMode: 0 random, 1 lane, 2 neighborhood */
   dropMode: DropModeSchema,
-  /** GTBallDropLaneNeighborhoodSize */
+  /** Furthest jump in neighborhood mode. */
   laneNeighborhoodSize: z.number().int().min(1),
-  /** GTBallLaneChangeStayChance: percent chance [0,100] the drop lane stays put. */
+  /** Percent chance [0,100] that the next ball drops in the same lane. */
   laneChangeStayChance: z.number().min(0).max(100),
   appearance: AppearanceConfigSchema,
   calibration: CalibrationConfigSchema,
-  adminControl: AdminControlConfigSchema,
+  remoteControl: RemoteControlConfigSchema,
   /** Seed for the drop-lane RNG. Omit to pick one per session (it is always logged). */
   seed: z.number().int().optional(),
 });
 
 export type CalibrationConfig = z.infer<typeof CalibrationConfigSchema>;
-export type AdminControlConfig = z.infer<typeof AdminControlConfigSchema>;
+export type RemoteControlConfig = z.infer<typeof RemoteControlConfigSchema>;
 export type ExperimentConfig = z.infer<typeof ExperimentConfigSchema>;
 
 export const DEFAULT_CONFIG: ExperimentConfig = {
@@ -136,7 +124,7 @@ export const DEFAULT_CONFIG: ExperimentConfig = {
     startWithPractice: true,
     autoContinueMs: 2000,
   },
-  adminControl: {
+  remoteControl: {
     enabled: false,
     infiniteTrials: false,
     infiniteBlocks: false,
@@ -152,7 +140,7 @@ export function resolveConfig(partial: DeepPartial<ExperimentConfig> = {}): Expe
     ...partial,
     appearance: { ...DEFAULT_CONFIG.appearance, ...partial.appearance },
     calibration: { ...DEFAULT_CONFIG.calibration, ...partial.calibration },
-    adminControl: { ...DEFAULT_CONFIG.adminControl, ...partial.adminControl },
+    remoteControl: { ...DEFAULT_CONFIG.remoteControl, ...partial.remoteControl },
   };
   return ExperimentConfigSchema.parse(merged);
 }

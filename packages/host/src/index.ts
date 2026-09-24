@@ -1,11 +1,13 @@
 import path from 'node:path';
 import { AdminHost } from './admin';
+import { ControlApi } from './control-api';
 import { loadExperimentConfig } from './config-file';
 import { ParticipantHost } from './participant';
 import { startServer } from './server';
 import { StateFile } from './state';
 
 export { AdminHost } from './admin';
+export { ControlApi, type ControlBackend } from './control-api';
 export { loadExperimentConfig } from './config-file';
 export { ParticipantHost } from './participant';
 export { isLoopback, startServer } from './server';
@@ -40,10 +42,10 @@ export async function startHost(opts: HostOptions): Promise<RunningHost> {
   const state = new StateFile(dataDir, opts.role);
 
   if (opts.role === 'participant') {
-    const { config, source, warnings } = loadExperimentConfig(dataDir);
+    const { config, source } = loadExperimentConfig(dataDir);
     log(`Config: ${source}`);
-    for (const w of warnings) log(`Config warning: ${w}`);
     const participant = new ParticipantHost({ dataDir, state, config, log, onQuit: opts.onQuit });
+    const api = new ControlApi(participant);
     const server = await startServer({
       port: opts.port ?? DEFAULT_PORTS.participant,
       bindAddress: opts.bindAddress ?? '0.0.0.0',
@@ -51,6 +53,8 @@ export async function startHost(opts: HostOptions): Promise<RunningHost> {
       extraOrigins: opts.extraOrigins ?? [],
       onUi: (ws) => participant.handleUi(ws),
       onPeer: (ws, remote) => void participant.handlePeer(ws, remote),
+      onApiHttp: (req, res) => void api.handleHttp(req, res),
+      onApiWs: (ws) => api.handleWs(ws),
     });
     log(`Participant host ${state.state.hostId} on port ${server.port}; data in ${dataDir}`);
     return {
@@ -66,12 +70,15 @@ export async function startHost(opts: HostOptions): Promise<RunningHost> {
   }
 
   const admin = new AdminHost({ dataDir, state, log });
+  const api = new ControlApi(admin);
   const server = await startServer({
     port: opts.port ?? DEFAULT_PORTS.admin,
     bindAddress: opts.bindAddress ?? '127.0.0.1',
     staticDir: opts.staticDir ?? null,
     extraOrigins: opts.extraOrigins ?? [],
     onUi: (ws) => admin.handleUi(ws),
+    onApiHttp: (req, res) => void api.handleHttp(req, res),
+    onApiWs: (ws) => api.handleWs(ws),
   });
   log(`Admin host ${state.state.hostId} on port ${server.port}; data in ${dataDir}`);
   return {

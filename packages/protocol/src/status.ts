@@ -8,8 +8,8 @@ export interface ExperimentStatus {
   participantId: string | null;
   phase: ExperimentPhase;
   screen: { id: ScreenId; interactive: boolean } | null;
-  /** Admin commands are only honoured when the config enables admin control. */
-  adminControlled: boolean;
+  /** Remote commands (admin panel, control API) are only honoured when remoteControl.enabled is set. */
+  remoteControlled: boolean;
   calibrating: boolean;
   /** -1 = practice block. Only meaningful while calibrating. */
   calibBlock: number;

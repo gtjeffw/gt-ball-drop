@@ -50,7 +50,8 @@ export type DomainEvent = { tExp: number; tSys: number } & (
   | { type: 'catcher-moved'; direction: 'left' | 'right'; lane: number; legacyColumn: number | null }
   | { type: 'screen-shown'; screen: ScreenId; interactive: boolean }
   | { type: 'screen-dismissed'; screen: ScreenId; by: ContinueSource }
-  | { type: 'admin-command'; command: AdminCommandName; accepted: boolean }
+  /** `source` says who sent it, e.g. 'admin-panel@a-1234', 'control-api@a-1234', 'control-api@local'. */
+  | { type: 'remote-command'; command: ControlCommand; accepted: boolean; source: string }
   | { type: 'admin-link'; status: 'connected' | 'lost'; peerId: string }
   | { type: 'clock-sync'; peerId: string; offsetMs: number; rttMs: number }
 );
@@ -58,11 +59,11 @@ export type DomainEvent = { tExp: number; tSys: number } & (
 export type DomainEventType = DomainEvent['type'];
 export type EventOf<T extends DomainEventType> = Extract<DomainEvent, { type: T }>;
 
-/** The admin's commands. The comments give the byte the legacy TCP protocol used on port 4242. */
-export type AdminCommandName =
-  | 'block-start' // 1: dismiss the current break screen
-  | 'block-end' // 0: end the current block
-  | 'quit'; // 2: end the block and the experiment
+/** Commands from the admin panel or the control API. */
+export type ControlCommand =
+  | 'block-start' // dismiss the current break screen (start calibration, continue, start the next block)
+  | 'block-end' // end the current block
+  | 'quit'; // end the block and the experiment
 
 /**
  * A persisted event. `(sessionId, seq)` is unique and gap-free, so every sink can apply

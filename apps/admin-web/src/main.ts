@@ -2,9 +2,8 @@ import { legacyTimestamp, legacyTokens } from '@gtbd/core';
 import type { AdminHostToUi, AdminUiToHost, ExperimentStatus, MirrorSummary, PeerSummary, ScreenId } from '@gtbd/protocol';
 
 /**
- * The admin panel, replacing the Java/Swing BallDropAdmin. The Java app guessed the game's
- * state by counting its own button presses. This page is driven by the participant's
- * actual status, so it always offers the command that makes sense right now.
+ * The admin panel. It is driven by the participant's actual status, so it always offers the
+ * command that makes sense right now.
  */
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const hostState = $('host-state');
@@ -123,10 +122,10 @@ function renderControl(): void {
     primary.textContent = 'End block';
     primary.dataset.cmd = 'block-end';
   }
-  const canCommand = st.adminControlled && st.phase !== 'ended';
+  const canCommand = st.remoteControlled && st.phase !== 'ended';
   primary.disabled = !canCommand || (!onBreak && st.phase !== 'running');
   quit.disabled = !canCommand;
-  if (!st.adminControlled) note.textContent = 'Admin control is off in this session\'s config (adminControl.enabled), so commands are ignored. Monitoring only.';
+  if (!st.remoteControlled) note.textContent = 'Remote control is off in this session\'s config (remoteControl.enabled), so commands are ignored. Monitoring only.';
 }
 
 function renderMirror(m: MirrorSummary): void {

@@ -1,6 +1,5 @@
 export * from './config';
 export * from './events';
-export * from './legacy-vars';
 export * from './status';
 export * from './wire';
 

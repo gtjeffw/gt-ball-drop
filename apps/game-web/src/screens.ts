@@ -33,7 +33,7 @@ export interface StartScreenInfo {
   hostState: 'connected' | 'standalone';
   pairingCode: string | null;
   adminLinks: string[];
-  adminControlled: boolean;
+  remoteControlled: boolean;
 }
 
 /** DOM dialogs over the 3D view, in the style of the C4 GameWindow. */
@@ -79,7 +79,7 @@ export class Screens {
         </form>
         <details class="experimenter"><summary>Experimenter</summary>
           <div>${hostLine}</div>${pairing}${admins}
-          <div>Admin control: ${info.adminControlled ? 'on (breaks wait for the admin)' : 'off'}</div>
+          <div>Remote control: ${info.remoteControlled ? 'on (breaks wait for the admin panel or control program)' : 'off'}</div>
         </details>
       </div>`;
     this.el.hidden = false;
@@ -108,8 +108,8 @@ export class Screens {
     if (this.current === key) return;
     this.current = key;
     const text = interactive ? TEXT[id].interactive : TEXT[id].nonInteractive;
-    // As in the original, non-interactive screens hide their buttons: the admin (or the
-    // hidden 9/0 keys) moves things on.
+    // Non-interactive screens have no buttons: the admin panel, a control program or the
+    // hidden 9/0 keys move things on.
     const buttons =
       id === 'complete'
         ? `<div class="buttons"><button data-act="quit">Quit</button></div>`

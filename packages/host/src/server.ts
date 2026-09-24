@@ -25,6 +25,9 @@ export interface ServerOptions {
   extraOrigins: string[];
   onUi(ws: WebSocket): void;
   onPeer?(ws: WebSocket, remote: string): void;
+  /** The control API (control-api.ts): /api/* over HTTP, /api/events over WebSocket. */
+  onApiHttp?(req: http.IncomingMessage, res: http.ServerResponse): void;
+  onApiWs?(ws: WebSocket): void;
 }
 
 export interface RunningServer {
@@ -43,6 +46,9 @@ export function isLoopback(addr: string | undefined): boolean {
  *               page in the local browser must not be able to drive the experiment)
  *   WS   /peer  the peer link; reachable from the LAN, but useless without the pairing
  *               secret (see @gtbd/secure)
+ *   HTTP /api/*, WS /api/events
+ *               the control API for other programs; loopback only, and any request that
+ *               carries a browser Origin other than our own is refused
  */
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const server = http.createServer((req, res) => {
@@ -50,9 +56,19 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       res.writeHead(403).end('Forbidden');
       return;
     }
+    if ((req.url ?? '').startsWith('/api/') && opts.onApiHttp) {
+      const origin = req.headers.origin;
+      if (origin !== undefined && !allowedOrigins().has(origin)) {
+        res.writeHead(403).end('Forbidden');
+        return;
+      }
+      opts.onApiHttp(req, res);
+      return;
+    }
     serveStatic(opts.staticDir, req, res);
   });
   const uiWss = new WebSocketServer({ noServer: true });
+  const apiWss = new WebSocketServer({ noServer: true });
   const peerWss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
 
   const allowedOrigins = () => {
@@ -71,6 +87,14 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         return;
       }
       uiWss.handleUpgrade(req, socket, head, (ws) => opts.onUi(ws));
+    } else if (url.pathname === '/api/events' && opts.onApiWs) {
+      const origin = req.headers.origin;
+      if (!isLoopback(remote) || (origin !== undefined && !allowedOrigins().has(origin))) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      apiWss.handleUpgrade(req, socket, head, (ws) => opts.onApiWs!(ws));
     } else if (url.pathname === '/peer' && opts.onPeer) {
       peerWss.handleUpgrade(req, socket, head, (ws) => opts.onPeer!(ws, remote ?? '?'));
     } else {
@@ -89,6 +113,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     close: () =>
       new Promise((resolve) => {
         for (const c of uiWss.clients) c.terminate();
+        for (const c of apiWss.clients) c.terminate();
         for (const c of peerWss.clients) c.terminate();
         server.closeAllConnections();
         server.close(() => resolve());
