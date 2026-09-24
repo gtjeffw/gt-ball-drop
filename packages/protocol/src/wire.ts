@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { EventEnvelopeSchema } from './events';
 import type { AdminCommandName, EventEnvelope } from './events';
-import { ExperimentConfigSchema, type ExperimentConfig } from './config';
+import type { ExperimentConfig } from './config';
 import type { ExperimentStatus } from './status';
 
 /**
@@ -27,7 +27,9 @@ export const GameToHostSchema = z.discriminatedUnion('t', [
     participantId: z.string().min(1),
     version: z.string(),
     startedAt: z.string(),
-    config: ExperimentConfigSchema,
+    // Stored verbatim as the session's config snapshot. Validated loosely, so sessions
+    // recorded by an older app version (e.g. still in a page's outbox) are always accepted.
+    config: z.looseObject({}),
   }),
   z.object({ t: z.literal('events'), sessionId: z.string(), events: z.array(EventEnvelopeSchema) }),
   z.object({ t: z.literal('status'), status: StatusSchema }),

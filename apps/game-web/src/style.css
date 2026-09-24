@@ -7,6 +7,7 @@ html, body {
   cursor: default;
   user-select: none;
 }
+body.playing, body.playing * { cursor: none; }
 /* The original ran at 1024x768; the stage is letterboxed to 4:3. */
 #stage {
   position: absolute;

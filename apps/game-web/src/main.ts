@@ -11,7 +11,22 @@ const canvas = document.getElementById('view') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 hud.textContent = `GT Ball Drop v. ${GTBALLDROP_VERSION}`;
 
-const renderer = new Renderer(canvas);
+// ---- host link and data capture -----------------------------------------------------------
+
+const link = new HostLink(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ui`);
+const hello = await link.start();
+const config = hello?.config ?? DEFAULT_CONFIG;
+const adminLinks = new Set<string>();
+
+// For side-by-side comparison, ?world=classic|clean and ?shading=0..1 override the config.
+// (A session's config.json records the config values, not these overrides.)
+const worldParam = params.get('world');
+const shadingParam = Number(params.get('shading'));
+const renderer = new Renderer(canvas, {
+  ...config.appearance,
+  ...(worldParam === 'classic' || worldParam === 'clean' ? { world: worldParam } : {}),
+  ...(params.has('shading') && shadingParam >= 0 && shadingParam <= 1 ? { modelShading: shadingParam } : {}),
+});
 function layout(): void {
   // Letterbox to the original 4:3.
   const w = Math.min(window.innerWidth, window.innerHeight * GEOMETRY.displayAspect);
@@ -22,13 +37,6 @@ function layout(): void {
 }
 window.addEventListener('resize', layout);
 layout();
-
-// ---- host link and data capture -----------------------------------------------------------
-
-const link = new HostLink(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ui`);
-const hello = await link.start();
-const config = hello?.config ?? DEFAULT_CONFIG;
-const adminLinks = new Set<string>();
 
 // Local-first: every event goes to the browser's IndexedDB outbox, then to the host,
 // which fsyncs and acks. A cloud target would be one more entry in this list.
@@ -194,6 +202,8 @@ async function quitApp(): Promise<void> {
 // ---- main loop ----------------------------------------------------------------------------
 
 function syncScreens(): void {
+  // No mouse cursor during play: C4 only drew it while a window was open.
+  document.body.classList.toggle('playing', !!exp && !quitting && exp.status().phase === 'running' && !exp.status().screen);
   if (!exp || quitting) return;
   const st = exp.status();
   if (st.phase === 'ended' && !st.screen) {

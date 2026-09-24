@@ -104,7 +104,7 @@ export class ParticipantHost {
             sf = SessionFiles.create(
               this.sessionsRoot,
               { sessionId: msg.sessionId, participantId: msg.participantId, startedAt: msg.startedAt, appVersion: msg.version, copy: 'primary' },
-              msg.config,
+              msg.config as ExperimentConfig,
             );
             this.sessions.set(msg.sessionId, sf);
             this.opts.log(`Session ${msg.sessionId} (${msg.participantId}) -> ${sf.dir}`);

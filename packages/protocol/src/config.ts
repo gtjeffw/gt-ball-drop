@@ -7,6 +7,36 @@ import { z } from 'zod';
 export const DropModeSchema = z.enum(['random', 'lane', 'neighborhood']);
 export type DropMode = z.infer<typeof DropModeSchema>;
 
+/**
+ * Which version of the C4 world to reproduce (GTBallWorldFilePath):
+ *  - 'clean': world/GTBallDrop_clean, the C4 default from Oct 2012 on. No skybox, red pit flames.
+ *  - 'classic': world/GTBallDrop_NO_PT_LIGHTS, the C4 default before that. "Bright" skybox,
+ *    yellow pit flames. The port's default.
+ */
+export const WorldSchema = z.enum(['clean', 'classic']);
+export type World = z.infer<typeof WorldSchema>;
+
+/** Visual settings. Logged with every session, since they change what participants see. */
+export const AppearanceConfigSchema = z.object({
+  /** GTBallWorldFilePath. Visual only: it doesn't change the geometry or the logic. */
+  world: WorldSchema,
+  /**
+   * Height of the fire-pit flames relative to the C4 original (1 = as in the world file,
+   * which reaches about 2 units above the paddle). A deliberate departure when not 1.
+   */
+  flameHeightScale: z.number().positive().max(2),
+  /** Brightness of the (additive) fire-pit flames relative to the original (1 = as in C4). */
+  flameOpacity: z.number().min(0).max(1),
+  /**
+   * How much the ball and paddle are shaded by the light. 0 = exactly the C4 "high contrast"
+   * materials (May 2011 on): full diffuse plus full emission, which saturates, so they look
+   * flat apart from the specular highlight. 1 = no emission and 55% diffuse, fully shaded.
+   * Values in between blend the two, keeping the hue.
+   */
+  modelShading: z.number().min(0).max(1),
+});
+export type AppearanceConfig = z.infer<typeof AppearanceConfigSchema>;
+
 export const CalibrationConfigSchema = z.object({
   /** GTBallCalMode */
   enabled: z.boolean(),
@@ -63,6 +93,7 @@ export const ExperimentConfigSchema = z.object({
   laneNeighborhoodSize: z.number().int().min(1),
   /** GTBallLaneChangeStayChance: percent chance [0,100] the drop lane stays put. */
   laneChangeStayChance: z.number().min(0).max(100),
+  appearance: AppearanceConfigSchema,
   calibration: CalibrationConfigSchema,
   adminControl: AdminControlConfigSchema,
   /** Seed for the drop-lane RNG. Omit to pick one per session (it is always logged). */
@@ -83,6 +114,15 @@ export const DEFAULT_CONFIG: ExperimentConfig = {
   dropMode: 'lane',
   laneNeighborhoodSize: 2,
   laneChangeStayChance: 50,
+  appearance: {
+    // Lab decision (Sep 2026): the pre-Oct-2012 look (Bright skybox, yellow flames).
+    world: 'classic',
+    // Lab decision (Sep 2026): lower and dimmer than C4, so the flames don't cover the paddle.
+    flameHeightScale: 0.5,
+    flameOpacity: 0.7,
+    // Lab decision (Sep 2026): full diffuse shading on the ball and paddle, which the C4 materials lacked.
+    modelShading: 1,
+  },
   calibration: {
     enabled: true,
     maxRefinements: 5,
@@ -110,6 +150,7 @@ export function resolveConfig(partial: DeepPartial<ExperimentConfig> = {}): Expe
   const merged = {
     ...DEFAULT_CONFIG,
     ...partial,
+    appearance: { ...DEFAULT_CONFIG.appearance, ...partial.appearance },
     calibration: { ...DEFAULT_CONFIG.calibration, ...partial.calibration },
     adminControl: { ...DEFAULT_CONFIG.adminControl, ...partial.adminControl },
   };

@@ -7,7 +7,7 @@ import type { DeepPartial, DropMode, ExperimentConfig } from './config';
  */
 export interface LegacyImportResult {
   config: DeepPartial<ExperimentConfig>;
-  /** Variables that are recognised but have no effect in the web port (model/world paths). */
+  /** Variables that are recognised but have no effect in the web port (model paths, unknown worlds). */
   ignored: string[];
   /** Variables that are not GT Ball Drop settings at all (engine settings like $displayWidth). */
   unknown: string[];
@@ -63,9 +63,13 @@ export function importLegacyVariables(text: string): LegacyImportResult {
       case 'GTBallCalSpeedTargetAvgErr': calibration.targetAvgErr = num(value); break;
       case 'GTBallCalNumTrials': calibration.numTrials = int(value); break;
       case 'GTBallCallStartWithPractice': calibration.startWithPractice = bool(value); break;
+      case 'GTBallWorldFilePath':
+        if (/_clean$/i.test(value)) config.appearance = { world: 'clean' };
+        else if (/GTBallDrop(_NO_PT_LIGHTS)?$/i.test(value)) config.appearance = { world: 'classic' };
+        else ignored.push(name);
+        break;
       case 'GTBallCatcherModelPath':
       case 'GTBallBallModelPath':
-      case 'GTBallWorldFilePath':
         ignored.push(name);
         break;
       default:

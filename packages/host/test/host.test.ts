@@ -142,6 +142,15 @@ describe('participant + admin hosts over a real LAN socket', () => {
     await adminUi.waitFor((m) => m.t === 'mirror' && m.mirror.lastSeq === events.at(-1)!.seq, 5000);
   });
 
+  it('accepts sessions recorded by an older app version (config missing newer fields)', async () => {
+    const { game } = await setup();
+    const { appearance: _dropped, ...oldConfig } = DEFAULT_CONFIG;
+    game.send({ t: 'session.open', sessionId: 'old-1', participantId: 'P0', version: '2.0.0-alpha.0', startedAt: new Date().toISOString(), config: oldConfig });
+    const opened = await game.waitFor((m) => m.t === 'session.opened' || m.t === 'error');
+    expect(opened.t).toBe('session.opened');
+    expect(JSON.parse(fs.readFileSync(path.join(opened.logDir, 'config.json'), 'utf8'))).toEqual(oldConfig);
+  });
+
   it('rejects a wrong pairing code and does not retry it', async () => {
     const { adminUi, address } = await setup();
     adminUi.send({ t: 'connect', address, pairingCode: '0000-0000-0000-0000-0000-0000-00' });
