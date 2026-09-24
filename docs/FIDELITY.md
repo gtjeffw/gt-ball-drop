@@ -173,8 +173,9 @@ Checked against the C++ and the C4 engine source.
 
 ## Faithful on purpose (including odd behavior)
 
-* All the defaults from `Game::Game()` (see `packages/protocol/src/config.ts`), and every
-  `GTBall*` variable name, via the one-time converter `tools/convert-c4-config.ts`.
+* Every `GTBall*` variable name, via the one-time converter `tools/convert-c4-config.ts`.
+  The defaults follow `Game::Game()` except for the lab's choices listed under
+  [Deliberate changes](#deliberate-changes).
 * Legacy log lines and their order, including the `*_DESCRIPT` header lines and the
   column numbering in `BALL_CATCHER_LEFT/RIGHT` (+3 = far left, left press increments).
 * Experiment time pauses during every dialog.
@@ -204,6 +205,7 @@ Checked against the C++ and the C4 engine source.
 | 6 | After `DoBlockBegin` pauses, the same frame could still spawn a ball behind the intro dialog. | The first ball waits for the dialog to close. | The ball was frozen behind the dialog anyway. |
 | 7 | Balls left over from an admin-forced calibration block carried into the next one and were counted there. | Cleared at every block boundary. | Stats belong to one block. |
 | 8 | The admin guessed the game state by counting its own button presses. | The admin reads the live status. | Removes a stuck-dialog failure mode. |
+| 9 | Defaults (`Game::Game()`): 5 balls per block, speed 0.001, a ball every 750 ms, stay chance 50%, calibration on with 5 balls per calibration block. | 200 balls per block, speed 0.01, a ball every 400 ms, stay chance 0 (always change lanes), calibration off, 100 balls per calibration block. | Lab decision (Sep 2026). Only affects settings a config leaves out. The C4 converter fills missing variables with the C4 defaults, not these. |
 
 ## New data (not in the original log)
 

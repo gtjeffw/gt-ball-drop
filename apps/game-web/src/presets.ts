@@ -8,8 +8,8 @@ import study2017 from '../../../docs/examples/config.2017-study.json';
 export const PRESETS: { id: string; label: string; config: ExperimentConfig }[] = [
   {
     id: 'calibration',
-    label: 'Default settings (with difficulty calibration)',
-    config: resolveConfig(),
+    label: 'Default settings, with difficulty calibration',
+    config: resolveConfig({ calibration: { enabled: true } }),
   },
   {
     id: 'quick',

@@ -88,7 +88,7 @@ describe('Experiment: blocks without calibration', () => {
   });
 
   it('balls take (dropZ - catchZMax) / speed ms to reach the catcher', () => {
-    const { exp, events } = make({ ...cfg, numBlocks: 1, numTrials: 1, dropMode: 'lane', laneChangeStayChance: 100 });
+    const { exp, events } = make({ ...cfg, numBlocks: 1, numTrials: 1, ballSpeed: 0.001, dropMode: 'lane', laneChangeStayChance: 100 });
     exp.start();
     run(exp, idleBot, 30_000);
     const spawn = ofType(events, 'ball-spawned')[0]!;
@@ -144,8 +144,11 @@ describe('Experiment: blocks without calibration', () => {
 });
 
 describe('Experiment: calibration', () => {
+  // The starting difficulty these tests expect, independent of the defaults.
+  const base = { ballSpeed: 0.001, ballSpawnTimeMs: 750, laneChangeStayChance: 50 };
+
   it('runs practice then scored blocks, auto-continues breaks after 2 s of paused time, and gets harder for a perfect player', () => {
-    const { exp, events } = make({ numBlocks: 1, numTrials: 3, calibration: { numTrials: 4 } });
+    const { exp, events } = make({ ...base, numBlocks: 1, numTrials: 3, calibration: { enabled: true, numTrials: 4 } });
     exp.start();
     expect(exp.status().screen?.id).toBe('calibration-intro');
     run(exp, perfectBot, 120_000);
@@ -168,7 +171,7 @@ describe('Experiment: calibration', () => {
   });
 
   it('legacy calibration lines match the original format', () => {
-    const { exp, events } = make({ calibration: { numTrials: 2 } });
+    const { exp, events } = make({ ...base, numBlocks: 1, numTrials: 3, calibration: { enabled: true, numTrials: 2 } });
     exp.start();
     run(exp, perfectBot, 20_000);
     const tk = tokens(events);
@@ -189,10 +192,11 @@ describe('Experiment: calibration', () => {
     // An idle player with every ball in the middle lane catches 100%, which is inside a
     // 0.9-1.0 target band, so the first scored block hits the target.
     const { exp, events } = make({
+      ...base,
       numBlocks: 1,
       numTrials: 2,
       laneChangeStayChance: 100,
-      calibration: { numTrials: 2, targetAvg: 0.95, targetAvgErr: 0.05 },
+      calibration: { enabled: true, numTrials: 2, targetAvg: 0.95, targetAvgErr: 0.05 },
     });
     exp.start();
     run(exp, idleBot, 200_000);

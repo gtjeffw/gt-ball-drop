@@ -277,16 +277,16 @@ into every session's folder, so each data set records how it was produced.
 |---|---|---|
 | `defaultParticipantId` | `GEORGEPBURDELL000` | pre-fills the start screen |
 | `numBlocks` | `3` | experiment blocks |
-| `numTrials` | `5` | balls per block. A block ends when this many balls have been **resolved** (caught + missed) |
+| `numTrials` | `200` | balls per block. A block ends when this many balls have been **resolved** (caught + missed) |
 | `onlyCreateNumTrialsBalls` | `true` | `true`: drop exactly `numTrials` balls per block. `false`: keep dropping until the block ends; balls still falling then are discarded |
-| `ballSpawnTimeMs` | `750` | ms between drops |
-| `ballSpeed` | `0.001` | fall speed in world units per ms (see [Speed and timing](#speed-and-timing)) |
+| `ballSpawnTimeMs` | `400` | ms between drops |
+| `ballSpeed` | `0.01` | fall speed in world units per ms (see [Speed and timing](#speed-and-timing)) |
 | `dropMode` | `"lane"` | `"random"`, `"lane"` or `"neighborhood"` (see [Drop modes](#drop-modes)) |
 | `laneNeighborhoodSize` | `2` | furthest jump in neighborhood mode (≥ 1) |
-| `laneChangeStayChance` | `50` | percent chance (0–100) that the next ball drops in the same lane |
+| `laneChangeStayChance` | `0` | percent chance (0–100) that the next ball drops in the same lane |
 | `seed` | *(random)* | fixes the random sequence of drop lanes. The seed actually used is always logged |
-| `calibration.enabled` | `true` | run calibration first |
-| `calibration.numTrials` | `5` | balls per calibration block |
+| `calibration.enabled` | `false` | run calibration first |
+| `calibration.numTrials` | `100` | balls per calibration block |
 | `calibration.startWithPractice` | `true` | begin with one unscored practice block |
 | `calibration.targetAvg` | `0.8` | target catch rate |
 | `calibration.targetAvgErr` | `0.05` | tolerance: 0.75–0.85 counts as on target |
@@ -313,11 +313,12 @@ paddle. So:
 
 | `ballSpeed` | Fall time |
 |---|---|
-| 0.001 | ≈ 9.8 s (the default; very easy) |
+| 0.001 | ≈ 9.8 s (very easy) |
 | 0.004 | ≈ 2.4 s |
-| 0.01 | ≈ 0.98 s |
+| 0.01 | ≈ 0.98 s (the default) |
 
-With a 750 ms drop interval and a 9.8 s fall, about 13 balls are in the air at once.
+With the defaults (a ball every 400 ms, a 0.98 s fall), two or three balls are in the air
+at once. With 750 ms and a 9.8 s fall, about 13 are.
 
 ### Drop modes
 
@@ -369,8 +370,8 @@ To reuse the settings from an old C4-version `variables.cfg`, convert it once:
 npm run convert-c4-config -- path/to/variables.cfg path/to/config.json
 ```
 
-Settings the old file doesn't cover get the current defaults. Then use the result like any
-other `config.json`.
+Settings the old file doesn't mention get the values the old version used for them, so
+the result runs what the old setup ran. Then use it like any other `config.json`.
 
 ---
 

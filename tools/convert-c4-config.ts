@@ -3,8 +3,9 @@
  *
  *   npm run convert-c4-config -- path/to/variables.cfg path/to/config.json
  *
- * Settings the file doesn't mention get the current defaults. The app itself only ever
- * reads config.json.
+ * Variables the file doesn't mention get the C4 version's own defaults, so the result
+ * describes what that program ran. Settings C4 didn't have (the look, apart from the world)
+ * get the current defaults. The app itself only ever reads config.json.
  */
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -20,6 +21,15 @@ export interface ConversionResult {
 
 const DROP_MODES: Record<string, DropMode> = { '0': 'random', '1': 'lane', '2': 'neighborhood' };
 
+/** The C4 version's defaults (Game::Game()) where they differ from today's. */
+const C4_DEFAULTS = {
+  numTrials: 5,
+  ballSpawnTimeMs: 750,
+  ballSpeed: 0.001,
+  laneChangeStayChance: 50,
+  calibration: { enabled: true, numTrials: 5 },
+} satisfies DeepPartial<ExperimentConfig>;
+
 export function convertC4Config(text: string): ConversionResult {
   const vars: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
@@ -27,8 +37,9 @@ export function convertC4Config(text: string): ConversionResult {
     if (m) vars[m[1]!] = m[2]!;
   }
 
-  const config: DeepPartial<ExperimentConfig> = {};
-  const calibration: NonNullable<DeepPartial<ExperimentConfig>['calibration']> = {};
+  const { calibration: c4Calibration, ...c4Defaults } = C4_DEFAULTS;
+  const config: DeepPartial<ExperimentConfig> = { ...c4Defaults };
+  const calibration: NonNullable<DeepPartial<ExperimentConfig>['calibration']> = { ...c4Calibration };
   const remoteControl: NonNullable<DeepPartial<ExperimentConfig>['remoteControl']> = {};
   const appearance: NonNullable<DeepPartial<ExperimentConfig>['appearance']> = {};
   const ignored: string[] = [];
@@ -76,7 +87,7 @@ export function convertC4Config(text: string): ConversionResult {
         unknown.push(name);
     }
   }
-  if (Object.keys(calibration).length) config.calibration = calibration;
+  config.calibration = calibration;
   if (Object.keys(remoteControl).length) config.remoteControl = remoteControl;
   if (Object.keys(appearance).length) config.appearance = appearance;
   return { config: resolveConfig(config), ignored, unknown };

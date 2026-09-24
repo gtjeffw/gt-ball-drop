@@ -94,14 +94,15 @@ export type ExperimentConfig = z.infer<typeof ExperimentConfigSchema>;
 
 export const DEFAULT_CONFIG: ExperimentConfig = {
   defaultParticipantId: 'GEORGEPBURDELL000',
+  // Lab decision (Sep 2026): 3 blocks of 200 fast balls, no calibration, always change lanes.
   numBlocks: 3,
-  numTrials: 5,
+  numTrials: 200,
   onlyCreateNumTrialsBalls: true,
-  ballSpawnTimeMs: 750,
-  ballSpeed: 0.001,
+  ballSpawnTimeMs: 400,
+  ballSpeed: 0.01,
   dropMode: 'lane',
   laneNeighborhoodSize: 2,
-  laneChangeStayChance: 50,
+  laneChangeStayChance: 0,
   appearance: {
     // Lab decision (Sep 2026): the pre-Oct-2012 look (Bright skybox, yellow flames).
     world: 'classic',
@@ -112,7 +113,7 @@ export const DEFAULT_CONFIG: ExperimentConfig = {
     modelShading: 1,
   },
   calibration: {
-    enabled: true,
+    enabled: false,
     maxRefinements: 5,
     speedIncr: 0.003,
     speedMin: 0.001,
@@ -120,7 +121,7 @@ export const DEFAULT_CONFIG: ExperimentConfig = {
     spawnTimeMinMs: 100,
     targetAvg: 0.8,
     targetAvgErr: 0.05,
-    numTrials: 5,
+    numTrials: 100,
     startWithPractice: true,
     autoContinueMs: 2000,
   },
