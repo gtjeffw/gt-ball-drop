@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "participant", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "participant"], "port": 5173 },
+    { "name": "admin", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "admin"], "port": 5174 }
+  ]
+}

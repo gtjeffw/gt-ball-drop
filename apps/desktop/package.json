@@ -1,0 +1,20 @@
+{
+  "name": "@gtbd/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "start:admin": "node build.mjs && electron . --role=admin"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@gtbd/host": "*",
+    "@gtbd/protocol": "*"
+  }
+}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GT Ball Drop Admin</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header><h1>GT Ball Drop Admin</h1><span id="host-state" class="pill">connecting to local host...</span></header>
+    <main>
+      <section class="card" id="connection">
+        <h2>Participant machine</h2>
+        <form id="connect-form">
+          <label>Address <input id="address" placeholder="192.168.1.20:4280" autocomplete="off" spellcheck="false" /></label>
+          <label>Pairing code <input id="code" placeholder="only needed the first time" autocomplete="off" spellcheck="false" /></label>
+          <div class="row"><button id="connect" type="submit">Connect</button><button id="disconnect" type="button">Disconnect</button></div>
+        </form>
+        <div id="peer-state"></div>
+      </section>
+      <section class="card" id="control">
+        <h2>Experiment</h2>
+        <div id="status">No participant connected.</div>
+        <div class="row big">
+          <button id="primary" disabled>...</button>
+          <button id="quit" class="danger" disabled>Quit experiment</button>
+        </div>
+        <div id="control-note" class="note"></div>
+      </section>
+      <section class="card" id="data">
+        <h2>Mirror copy</h2>
+        <div id="mirror">Nothing mirrored yet.</div>
+        <ol id="feed" reversed></ol>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

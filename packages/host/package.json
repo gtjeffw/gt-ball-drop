@@ -1,0 +1,19 @@
+{
+  "name": "@gtbd/host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "ws": "^8.21.3",
+    "@gtbd/protocol": "*",
+    "@gtbd/core": "*",
+    "@gtbd/secure": "*",
+    "@gtbd/sinks": "*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}
