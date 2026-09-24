@@ -1,6 +1,6 @@
 /**
  * Procedural stand-ins for the C4 engine's stock textures, so the repository and the
- * public demo contain no third-party art. Everything is seamless (tileable) and
+ * public website contain no third-party art. Everything is seamless (tileable) and
  * deterministic. Pure functions returning RGBA bytes; renderer.ts turns them into textures.
  */
 

@@ -39,6 +39,41 @@ Options go after `--`, e.g. `npm run desktop -- --windowed`:
 To leave kiosk mode, quit from the start screen (**Esc** or **Quit**), or use the OS quit
 shortcut (⌘Q on macOS, Alt+F4 on Windows).
 
+### Browser mode (experimenter in the room)
+
+A static website version with nothing to install: open the lab's Ball Drop site (see
+[DEPLOY.md](DEPLOY.md)) in Chrome, Edge or Firefox. It is meant for supervised sessions,
+where the experimenter sets up the computer and then hands it to the participant.
+
+1. **Setup screen** (experimenter). Every setting from [`config.json`](#4-configuration),
+   grouped and checked as you type. Start from a preset (presets set the session and
+   timing, and leave the look alone), or **Load config.json…** to use a lab config file.
+   **Save config.json** writes the current settings to a file. The browser remembers the
+   last settings used, and **Reset to defaults** goes back to the lab defaults.
+2. **Continue to participant screen**, then hand over. The participant screen is the usual
+   start screen. **Settings** (or **Esc**) goes back to the setup screen.
+3. At the end, after *"Experiment complete!"* and **Quit**: **Download session data
+   (.zip)**. The zip holds the session folder: `events.jsonl`, `event_log.txt` and
+   `config.json` (see [What gets recorded](#5-what-gets-recorded)). **Results** shows the
+   block scores, for the experimenter. **Set up another session** returns to the setup
+   screen.
+
+Events are saved in the browser's storage as they happen, and are deleted only after you
+have downloaded them and moved on. If the tab is closed or crashes first, the next visit
+lists the session with **Download** and **Discard** buttons.
+
+Limits compared with the desktop app:
+
+* The data exists only in that browser until it is downloaded. A private/incognito window,
+  or clearing the browser's site data, deletes it.
+* No kiosk: the page asks for full screen on **Start**, but the participant can leave it
+  (**Esc**) and reach the rest of the computer. Supervise.
+* No remote control, admin panel or control API (`remoteControl` is always off).
+* `?preset=quick`, `?preset=calibration` or `?preset=study2017` in the URL opens the setup
+  screen with that preset.
+
+To run browser mode from a checkout: `npm run dev:browser` (then the URL it prints).
+
 ### In a browser (development)
 
 ```bash
@@ -409,6 +444,9 @@ Inside the participant folder: `config.json` (settings), `sessions/` (one folder
 session), and `host.json`. Inside the admin folder: `mirror/` (copies of sessions) and
 `host.json`.
 
+In browser mode, sessions are kept in the browser's own storage (IndexedDB for the site)
+until downloaded.
+
 **`host.json` holds the pairing codes. Treat it like a password file.** Delete it to
 forget all pairings.
 
@@ -418,6 +456,7 @@ forget all pairings.
 
 | Symptom | Fix |
 |---|---|
+| Browser mode lists a session **still in this browser** | A previous tab closed before its data was downloaded. **Download** it, then **Discard** it |
 | Start screen says **No local host** | The game page can't reach its host, so data stays in browser storage only. Use the desktop app, or start `npm run dev:participant` |
 | Admin shows **Cannot reach …** | Check the participant's IP address and that port 4280 is allowed through its firewall. The participant app must be running |
 | Admin shows **Pairing code not recognised** | The code was already used or has been replaced. Get the current code from the participant's start screen |

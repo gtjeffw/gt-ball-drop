@@ -1,6 +1,6 @@
 {
   "name": "gt-ball-drop",
-  "version": "2.0.0-alpha.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "description": "GT Ball Drop dual-task experiment: web port of the C4-engine original",
@@ -21,8 +21,8 @@
     "desktop": "npm run build:web && npm run build -w @gtbd/desktop && electron apps/desktop",
     "desktop:admin": "npm run build:web && npm run build -w @gtbd/desktop && electron apps/desktop --role=admin",
     "convert-c4-config": "tsx tools/convert-c4-config.ts",
-    "build:demo": "npm run build:demo -w @gtbd/game-web",
-    "dev:demo": "npm run dev:demo -w @gtbd/game-web"
+    "build:browser": "npm run build:browser -w @gtbd/game-web",
+    "dev:browser": "npm run dev:browser -w @gtbd/game-web"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

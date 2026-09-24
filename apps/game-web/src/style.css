@@ -63,10 +63,29 @@ button.link { background: none; border: none; color: #2d4d7c; text-decoration: u
 .warn { color: #b3261e; font-weight: bold; }
 
 .keys { font-size: 13px; color: #444; margin: 10px 0 0; }
-.demo-options { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.demo-options label { display: flex; gap: 8px; align-items: center; }
-.demo-options select { font: inherit; font-size: 12px; flex: 1; }
 .results { border-collapse: collapse; margin: 6px 0 10px; font-size: 14px; }
 .results th, .results td { border: 1px solid #bbb; padding: 3px 10px; text-align: right; }
 .results th:first-child, .results td:first-child { text-align: left; }
 .downloads { flex-wrap: wrap; justify-content: flex-start; }
+.results-box { margin: 10px 0 0; font-size: 13px; }
+.results-box summary { cursor: pointer; color: #555; }
+.stored td:last-child { white-space: nowrap; }
+.stored button { font: inherit; font-size: 12px; }
+
+/* Browser mode's setup screen. */
+.window.setup { width: min(860px, 96vw); max-height: 94vh; display: flex; flex-direction: column; }
+.window.setup .body { overflow-y: auto; font-size: 13px; }
+.setup .intro { color: #333; }
+.setup .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.setup .toolbar label { flex: 1; min-width: 260px; }
+.setup .toolbar select, .setup .toolbar button { font: inherit; }
+.setup .note { background: #fff8d0; border: 1px solid #d8c060; padding: 4px 8px; }
+.setup .sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 10px; }
+.setup fieldset { border: 1px solid #bbb; margin: 0; padding: 6px 10px 8px; }
+.setup legend { font-weight: bold; color: #2d4d7c; }
+.setup label.field { display: grid; grid-template-columns: 1fr 120px; gap: 2px 8px; margin: 4px 0; }
+.setup label.field input[type='checkbox'] { justify-self: start; flex: none; }
+.setup label.field select, .setup label.field input { font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+.setup label.field em { grid-column: 1 / -1; font-style: normal; font-size: 11px; color: #666; text-align: right; }
+.setup label.field.invalid input { outline: 2px solid #b3261e; }
+.setup label.field em.err { color: #b3261e; }

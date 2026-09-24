@@ -11,7 +11,8 @@ replacing the C4-engine game and the Java admin panel.
 * **Admin:** a web panel that pairs with the participant machine over the LAN, using an
   encrypted, mutually authenticated channel.
 * **Deployment:** an Electron app (participant = kiosk, admin = window), or run the host
-  and use any Chromium browser.
+  and use any Chromium browser. Or **browser mode**: a static website with a setup
+  screen, for sessions with the experimenter in the room, and a .zip download at the end.
 
 ```bash
 npm install
@@ -22,7 +23,8 @@ npm run desktop           # the desktop app (participant); npm run desktop:admin
 ```
 
 **Running experiments:** see [docs/INSTRUCTIONS.md](docs/INSTRUCTIONS.md) (setup, settings, data files).
-**Web demo** (static site, e.g. Cloudflare Pages): see [docs/DEPLOY.md](docs/DEPLOY.md).
+**Browser mode** (static site for supervised sessions, e.g. on Cloudflare Pages): see
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and extension points
 (cloud sink, relay, PAKE). See [docs/FIDELITY.md](docs/FIDELITY.md) for what matches the

@@ -32,7 +32,8 @@ packages/
              node/SessionFiles (session dir on disk, idempotent, fsynced)
   host       Node host: static UI + /ui link + /peer link. ParticipantHost, AdminHost.
 apps/
-  game-web   Three.js renderer, DOM dialogs, keyboard input, HostLink (browser)
+  game-web   Three.js renderer, DOM dialogs, keyboard input, HostLink, Capture
+             (host | browser), browser-mode setup screen
   admin-web  Admin panel (browser)
   desktop    Electron shell: embeds the host, kiosk window, role = participant | admin
 ```
@@ -72,6 +73,17 @@ The apps sit on top. `core` and `secure` run unchanged in the browser and in Nod
 * **The admin never guesses state.** The participant streams `ExperimentStatus`, and the
   admin page offers only the command that makes sense for the current screen.
 
+## Browser mode (no host)
+
+The static build (`VITE_BROWSER=1`) swaps `hostCapture` for `browserCapture`, and
+`config.json` for a setup screen validated by the same `ExperimentConfigSchema`. Events go
+into an `IndexedDbOutboxStore` of their own as they happen. Nothing replicates them: at
+the end the session is exported as a zip (`events.jsonl`, `event_log.txt` built by the
+same legacy exporter, and `config.json` taken from the `session-started` event), and is
+trimmed from the store only after the download. So the page needs no session metadata of
+its own, and a crashed tab's session can still be exported on the next visit. The
+experiment, recorder and renderer are the same code as with a host.
+
 ## Event model
 
 ```ts
@@ -104,7 +116,8 @@ Anything that stores events deduplicates on `(sessionId, seq)`. Resending is alw
 ### Adding a cloud sink later
 
 Write a `ReplicationTarget` that POSTs batches and acks the highest seq the server
-reports. Add it to the `Replicator` target list in `apps/game-web/src/main.ts`. The outbox
+reports. Add it to the `Replicator` target list in `hostCapture`
+(`apps/game-web/src/capture.ts`). The outbox
 then keeps events until *both* the local host and the cloud have them. For online studies
 with no Electron and no host, the cloud target can be the only one. Nothing in `core`
 changes.

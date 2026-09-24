@@ -1,4 +1,5 @@
 import type { ScreenId } from '@gtbd/protocol';
+import type { Download, StoredSession } from './capture';
 
 /** Dialog text, copied from the original Interface.cpp. */
 const TEXT: Record<ScreenId, { interactive: string; nonInteractive: string }> = {
@@ -30,19 +31,11 @@ const TEXT: Record<ScreenId, { interactive: string; nonInteractive: string }> = 
 
 export interface StartScreenInfo {
   defaultParticipantId: string;
-  /** host: logging to the local host. standalone: host expected but unreachable. demo: static website. */
-  mode: 'host' | 'standalone' | 'demo';
+  /** host: logging to the local host. standalone: host expected but unreachable. browser: static website, data kept in the browser. */
+  mode: 'host' | 'standalone' | 'browser';
   pairingCode: string | null;
   adminLinks: string[];
   remoteControlled: boolean;
-  /** Demo only: the settings a visitor can pick. */
-  demo?: { preset: string; presets: { id: string; label: string }[]; world: string };
-}
-
-export interface Download {
-  name: string;
-  label: string;
-  blob: Blob;
 }
 
 /** DOM dialogs over the 3D view, in the style of the C4 GameWindow. */
@@ -58,7 +51,8 @@ export class Screens {
       onContinue(): void;
       onQuit(): void;
       onNewPairingCode(): void;
-      onDemoOption?(key: 'preset' | 'world', value: string): void;
+      /** Browser mode: back from the participant screen to the setup screen. */
+      onSettings?(): void;
     },
   ) {
     this.el = root;
@@ -67,23 +61,13 @@ export class Screens {
   showStart(info: StartScreenInfo): void {
     this.startInfo = info;
     this.current = 'start';
+    const browser = info.mode === 'browser';
     const hostLine =
       info.mode === 'host'
         ? `<span class="ok">Local host connected</span>. Logs are written to disk.`
-        : info.mode === 'demo'
-          ? `<b>Demo.</b> Runs entirely in this browser and uploads nothing. At the end you can download the session data.`
+        : browser
+          ? `<b>Browser mode.</b> Data stays on this computer and is offered as a download at the end.`
           : `<span class="warn">No local host</span>. Events are kept in this browser's storage only.`;
-    const option = (key: string, value: string, items: { id: string; label: string }[]) =>
-      `<select data-opt="${key}">${items.map((o) => `<option value="${o.id}"${o.id === value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>`;
-    const demo = info.demo
-      ? `<div class="demo-options">
-          <label>Settings ${option('preset', info.demo.preset, info.demo.presets)}</label>
-          <label>Look ${option('world', info.demo.world, [
-            { id: 'classic', label: 'Classic (cloudy sky)' },
-            { id: 'clean', label: 'Clean (pale background)' },
-          ])}</label>
-        </div>`
-      : '';
     const pairing =
       info.mode !== 'host'
         ? ''
@@ -98,12 +82,12 @@ export class Screens {
           <label>Participant ID:
             <input id="pid" autocomplete="off" spellcheck="false" maxlength="64" value="${escapeHtml(info.defaultParticipantId)}" />
           </label>
-          <div class="buttons">${info.mode === 'demo' ? '' : '<button type="button" data-act="quit">Quit</button>'}<button type="submit">Start</button></div>
+          <div class="buttons">${browser ? '<button type="button" data-act="settings">Settings</button>' : '<button type="button" data-act="quit">Quit</button>'}<button type="submit">Start</button></div>
           <p class="keys">Catch the balls with <b>←</b> <b>→</b> (or <b>A</b> <b>D</b>).</p>
         </form>
-        <details class="experimenter"${info.mode === 'demo' ? ' open' : ''}><summary>${info.mode === 'demo' ? 'About this demo' : 'Experimenter'}</summary>
-          <div>${hostLine}</div>${demo}${pairing}${admins}
-          ${info.mode === 'demo' ? '' : `<div>Remote control: ${info.remoteControlled ? 'on (breaks wait for the admin panel or control program)' : 'off'}</div>`}
+        <details class="experimenter"><summary>Experimenter</summary>
+          <div>${hostLine}</div>${pairing}${admins}
+          ${browser ? '' : `<div>Remote control: ${info.remoteControlled ? 'on (breaks wait for the admin panel or control program)' : 'off'}</div>`}
         </details>
       </div>`;
     this.el.hidden = false;
@@ -115,35 +99,65 @@ export class Screens {
       const pid = input.value.trim();
       if (pid) this.handlers.onStart(pid);
     });
-    for (const sel of this.el.querySelectorAll<HTMLSelectElement>('select[data-opt]')) {
-      sel.addEventListener('change', () => this.handlers.onDemoOption?.(sel.dataset.opt as 'preset' | 'world', sel.value));
-    }
     this.bindButtons();
   }
 
-  /** The end of a session: a message, an optional results table, downloads, and optionally "Play again". */
-  showFinished(opts: { message: string; resultsHtml?: string; downloads: Download[]; playAgain: boolean }): void {
+  /**
+   * The end of a session: a message and any downloads. Browser mode adds the block results
+   * (collapsed, for the experimenter: the lab version shows participants no scores) and a
+   * button to set up the next session.
+   */
+  showFinished(opts: { message: string; downloads: Download[]; resultsHtml?: string; onDownload?(): void; next?: { label: string; action(): void } }): void {
     this.current = 'finished';
     const links = opts.downloads
       .map((d, i) => `<button type="button" data-download="${i}">Download ${escapeHtml(d.label)}</button>`)
       .join('');
     this.el.innerHTML = `<div class="window"><div class="title">GTBallDrop</div><div class="body">
-        <p>${escapeHtml(opts.message)}</p>${opts.resultsHtml ?? ''}
+        <p>${escapeHtml(opts.message)}</p>
         ${links ? `<div class="buttons downloads">${links}</div>` : ''}
-        ${opts.playAgain ? '<div class="buttons"><button type="button" data-act="again">Play again</button></div>' : ''}
+        ${opts.resultsHtml ? `<details class="results-box"><summary>Results</summary>${opts.resultsHtml}</details>` : ''}
+        ${opts.next ? `<div class="buttons"><button type="button" data-act="next">${escapeHtml(opts.next.label)}</button></div>` : ''}
       </div></div>`;
     this.el.hidden = false;
     for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-download]')) {
       b.addEventListener('click', () => {
-        const d = opts.downloads[Number(b.dataset.download)]!;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(d.blob);
-        a.download = d.name;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        saveFile(opts.downloads[Number(b.dataset.download)]!);
+        opts.onDownload?.();
       });
     }
-    this.el.querySelector('button[data-act="again"]')?.addEventListener('click', () => location.reload());
+    this.el.querySelector('button[data-act="next"]')?.addEventListener('click', () => opts.next?.action());
+  }
+
+  /** Browser mode, on load: sessions whose data is still in browser storage. */
+  showStored(
+    sessions: StoredSession[],
+    handlers: { download(s: StoredSession): Promise<void>; discard(s: StoredSession): Promise<void>; done(): void },
+  ): void {
+    this.current = 'stored';
+    const rows = sessions
+      .map(
+        (s, i) => `<tr data-row="${i}"><td>${escapeHtml(s.participantId)}</td><td>${escapeHtml(s.startedAt.toLocaleString())}</td><td>${s.events}</td>
+          <td><button type="button" data-download="${i}">Download</button> <button type="button" data-discard="${i}">Discard</button></td></tr>`,
+      )
+      .join('');
+    this.el.innerHTML = `<div class="window"><div class="title">GTBallDrop</div><div class="body">
+        <p>Data from ${sessions.length === 1 ? 'an earlier session is' : 'earlier sessions are'} still in this browser. Download it before discarding it.</p>
+        <table class="results stored"><tr><th>Participant</th><th>Started</th><th>Events</th><th></th></tr>${rows}</table>
+        <div class="buttons"><button type="button" data-act="done">Continue</button></div>
+      </div></div>`;
+    this.el.hidden = false;
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-download]')) {
+      b.addEventListener('click', () => void handlers.download(sessions[Number(b.dataset.download)]!));
+    }
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-discard]')) {
+      b.addEventListener('click', async () => {
+        const s = sessions[Number(b.dataset.discard)]!;
+        if (!confirm(`Delete the data of ${s.participantId} (${s.startedAt.toLocaleString()}) from this browser? This cannot be undone.`)) return;
+        await handlers.discard(s);
+        b.closest('tr')?.remove();
+      });
+    }
+    this.el.querySelector('button[data-act="done"]')!.addEventListener('click', () => handlers.done());
   }
 
   updateStart(patch: Partial<StartScreenInfo>): void {
@@ -179,6 +193,13 @@ export class Screens {
     this.el.hidden = false;
   }
 
+  /** Another component (the setup screen) is about to use the overlay. */
+  external(name: string): HTMLElement {
+    this.current = name;
+    this.el.hidden = false;
+    return this.el;
+  }
+
   hide(): void {
     if (this.current === null) return;
     this.current = null;
@@ -197,9 +218,18 @@ export class Screens {
         if (act === 'continue') this.handlers.onContinue();
         else if (act === 'quit') this.handlers.onQuit();
         else if (act === 'newcode') this.handlers.onNewPairingCode();
+        else if (act === 'settings') this.handlers.onSettings?.();
       });
     }
   }
+}
+
+export function saveFile(d: Download): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(d.blob);
+  a.download = d.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function escapeHtml(s: string): string {

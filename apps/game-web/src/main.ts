@@ -1,35 +1,79 @@
 import { Experiment, GEOMETRY, laneX, randomSeed, SessionRecorder } from '@gtbd/core';
-import { DEFAULT_CONFIG, GTBALLDROP_VERSION, type DomainEvent, type EventEnvelope, type HostToGame } from '@gtbd/protocol';
-import { demoCapture, hostCapture, type Capture } from './capture';
-import { DEMO_PRESETS, demoPreset } from './demo';
+import {
+  DEFAULT_CONFIG,
+  ExperimentConfigSchema,
+  GTBALLDROP_VERSION,
+  type AppearanceConfig,
+  type DomainEvent,
+  type EventEnvelope,
+  type ExperimentConfig,
+  type HostToGame,
+} from '@gtbd/protocol';
+import { browserCapture, hostCapture, type BrowserCapture, type Capture } from './capture';
+import { preset } from './presets';
 import { Renderer } from './renderer';
-import { Screens } from './screens';
+import { saveFile, Screens } from './screens';
+import { forBrowserMode, SetupScreen } from './setup';
 
-/** The static-website build (npm run build:demo): no host, nothing leaves the browser. */
-const DEMO = import.meta.env.VITE_DEMO === '1';
+/**
+ * The static-website build (npm run build:browser), for sessions with the experimenter in
+ * the room: a setup screen instead of config.json, and a download instead of a host.
+ */
+const BROWSER = import.meta.env.VITE_BROWSER === '1';
+const REMEMBERED_CONFIG = 'gtbd.browser.config';
 
 const params = new URLSearchParams(location.search);
 const stage = document.getElementById('stage')!;
-const canvas = document.getElementById('view') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 hud.textContent = `GT Ball Drop v. ${GTBALLDROP_VERSION}`;
 
 // ---- data capture -------------------------------------------------------------------------
 
 const adminLinks = new Set<string>();
-const capture: Capture = DEMO ? demoCapture() : await hostCapture((m) => onHostMessage(m));
-const preset = DEMO ? demoPreset(params) : null;
-const config = preset?.config ?? capture.hello?.config ?? DEFAULT_CONFIG;
+const browserStore: BrowserCapture | null = BROWSER ? browserCapture() : null;
+const capture: Capture = browserStore ?? (await hostCapture((m) => onHostMessage(m)));
+/** Browser mode: ?preset=<id>, else the settings last used in this browser. */
+const urlPreset = BROWSER ? preset(params.get('preset')) : null;
+const remembered = BROWSER && !urlPreset ? rememberedConfig() : null;
+let config: ExperimentConfig = BROWSER
+  ? forBrowserMode(urlPreset ?? remembered ?? DEFAULT_CONFIG)
+  : (capture.hello?.config ?? DEFAULT_CONFIG);
+/** Shown the first time the setup screen opens. */
+let setupNote = remembered ? 'These are the settings last used in this browser. Reset to defaults to start from the lab defaults.' : '';
 
-// For side-by-side comparison, ?world=classic|clean and ?shading=0..1 override the config.
-// (A session's config.json records the config values, not these overrides.)
+function rememberedConfig(): ExperimentConfig | null {
+  try {
+    const parsed = ExperimentConfigSchema.safeParse(JSON.parse(localStorage.getItem(REMEMBERED_CONFIG) ?? 'null'));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+// For side-by-side comparison with a host, ?world=classic|clean and ?shading=0..1 override
+// the config. (A session's config.json records the config values, not these overrides.)
 const worldParam = params.get('world');
 const shadingParam = Number(params.get('shading'));
-const renderer = new Renderer(canvas, {
+let renderer = new Renderer(document.getElementById('view') as HTMLCanvasElement, {
   ...config.appearance,
-  ...(worldParam === 'classic' || worldParam === 'clean' ? { world: worldParam } : {}),
-  ...(params.has('shading') && shadingParam >= 0 && shadingParam <= 1 ? { modelShading: shadingParam } : {}),
+  ...(!BROWSER && (worldParam === 'classic' || worldParam === 'clean') ? { world: worldParam } : {}),
+  ...(!BROWSER && params.has('shading') && shadingParam >= 0 && shadingParam <= 1 ? { modelShading: shadingParam } : {}),
 });
+let rendererLook = JSON.stringify(config.appearance);
+
+/** The renderer is built for one look; a new look gets a new renderer on a new canvas. */
+function setAppearance(appearance: AppearanceConfig): void {
+  if (JSON.stringify(appearance) === rendererLook) return;
+  rendererLook = JSON.stringify(appearance);
+  const old = document.getElementById('view') as HTMLCanvasElement;
+  const fresh = document.createElement('canvas');
+  fresh.id = 'view';
+  old.replaceWith(fresh);
+  renderer.dispose();
+  renderer = new Renderer(fresh, appearance);
+  layout();
+}
+
 function layout(): void {
   // Letterbox to the original 4:3.
   const w = Math.min(window.innerWidth, window.innerHeight * GEOMETRY.displayAspect);
@@ -45,6 +89,7 @@ let exp: Experiment | null = null;
 let pending: EventEnvelope[] = [];
 let lastAdvance = performance.now();
 let quitting = false;
+let sessionId: string | null = null;
 const results: Extract<DomainEvent, { type: 'block-ended' | 'calibration-ended' }>[] = [];
 
 const flush = () => {
@@ -90,28 +135,50 @@ const screens = new Screens(document.getElementById('overlay')!, {
   onContinue: () => exp?.dispatch({ type: 'continue', source: 'participant' }),
   onQuit: () => requestQuit(),
   onNewPairingCode: () => capture.newPairingCode(),
-  // Demo settings apply on reload, since the renderer is built for one look.
-  onDemoOption: (key, value) => {
-    const next = new URLSearchParams(location.search);
-    next.set(key, value);
-    location.search = next.toString();
+  onSettings: () => showSetup(),
+});
+
+const setup = new SetupScreen(document.getElementById('overlay')!, {
+  onAppearance: setAppearance,
+  onContinue: (c) => {
+    config = c;
+    localStorage.setItem(REMEMBERED_CONFIG, JSON.stringify(c));
+    setAppearance(c.appearance);
+    showStart();
   },
 });
 
-screens.showStart({
-  defaultParticipantId: config.defaultParticipantId,
-  mode: DEMO ? 'demo' : capture.hello ? 'host' : 'standalone',
-  pairingCode: capture.hello?.pairingCode ?? null,
-  adminLinks: [],
-  remoteControlled: config.remoteControl.enabled,
-  demo: preset
-    ? { preset: preset.id, presets: DEMO_PRESETS.map(({ id, label }) => ({ id, label })), world: params.get('world') ?? config.appearance.world }
-    : undefined,
-});
+function showStart(): void {
+  screens.showStart({
+    defaultParticipantId: config.defaultParticipantId,
+    mode: BROWSER ? 'browser' : capture.hello ? 'host' : 'standalone',
+    pairingCode: capture.hello?.pairingCode ?? null,
+    adminLinks: [],
+    remoteControlled: config.remoteControl.enabled,
+  });
+}
+
+function showSetup(): void {
+  screens.external('setup');
+  setup.show(config, setupNote);
+  setupNote = '';
+}
+
+if (browserStore) {
+  // Data a closed or crashed tab didn't get to download.
+  const stored = await browserStore.stored();
+  if (stored.length)
+    screens.showStored(stored, {
+      download: async (s) => saveFile(await browserStore.exportSession(s.sessionId)),
+      discard: (s) => browserStore.discard(s.sessionId),
+      done: showSetup,
+    });
+  else showSetup();
+} else showStart();
 
 function startSession(participantId: string): void {
   if (exp) return;
-  const sessionId = crypto.randomUUID();
+  sessionId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
   capture.openSession({ sessionId, participantId, version: GTBALLDROP_VERSION, startedAt, config });
   const recorder = new SessionRecorder(sessionId, () => Math.round(performance.timeOrigin + performance.now()));
@@ -145,7 +212,10 @@ window.addEventListener(
   'keydown',
   (ev) => {
     if (screens.isStart) {
-      if (ev.key === 'Escape') void quitApp();
+      if (ev.key === 'Escape') {
+        if (BROWSER) showSetup();
+        else void quitApp();
+      }
       return;
     }
     if (!exp) return;
@@ -199,10 +269,32 @@ async function quitApp(): Promise<void> {
   flush();
   screens.showMessage('GTBallDrop', 'Saving session data...');
   const r = await capture.finish();
-  screens.showFinished({ message: r.message, downloads: r.downloads, resultsHtml: DEMO ? resultsTable() : undefined, playAgain: DEMO });
+  if (!browserStore) {
+    screens.showFinished({ message: r.message, downloads: r.downloads });
+    return;
+  }
+  // The stored copy is deleted only once the experimenter has downloaded it and moves on;
+  // otherwise the next page load offers it again.
+  let downloaded = false;
+  screens.showFinished({
+    message: r.message,
+    downloads: r.downloads,
+    resultsHtml: resultsTable(),
+    onDownload: () => (downloaded = true),
+    next: {
+      label: 'Set up another session',
+      action: async () => {
+        if (downloaded && sessionId) await browserStore.discard(sessionId);
+        const next = new URLSearchParams(location.search);
+        next.delete('preset'); // the settings just used are remembered
+        const q = next.toString();
+        location.href = location.pathname + (q ? `?${q}` : '');
+      },
+    },
+  });
 }
 
-/** Demo only: a small per-block score table (the lab version shows participants no scores). */
+/** Browser mode: a per-block score table for the experimenter. */
 function resultsTable(): string {
   if (!results.length) return '';
   const rows = results.map((e) =>
@@ -220,9 +312,8 @@ function syncScreens(): void {
   document.body.classList.toggle('playing', !!exp && !quitting && exp.status().phase === 'running' && !exp.status().screen);
   if (!exp || quitting) return;
   const st = exp.status();
-  // Ended: aborted with the quit key (no screen), or, in the demo, finished (skip the
-  // "notify the administrator" screen and go straight to the results).
-  if (st.phase === 'ended' && (!st.screen || DEMO)) {
+  // Ended by the quit key (no screen); a finished session waits on the "complete" screen.
+  if (st.phase === 'ended' && !st.screen) {
     void quitApp();
     return;
   }

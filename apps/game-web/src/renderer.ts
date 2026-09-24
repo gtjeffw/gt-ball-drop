@@ -350,6 +350,21 @@ export class Renderer {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Free the GPU resources and the WebGL context (the canvas can't be reused). */
+  dispose(): void {
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      for (const mat of [m.material ?? []].flat()) {
+        for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+        for (const u of Object.values((mat as THREE.ShaderMaterial).uniforms ?? {})) if (u.value instanceof THREE.Texture) u.value.dispose();
+        mat.dispose();
+      }
+    });
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+  }
+
   render(s: Pick<ExperimentSnapshot, 'catcherX' | 'balls' | 'tSys'>): void {
     this.catcher.position.x = s.catcherX;
 

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "dev:demo": "vite --mode demo",
-    "build:demo": "vite build --mode demo --outDir dist-demo"
+    "dev:browser": "vite --mode browser",
+    "build:browser": "vite build --mode browser --outDir dist-browser"
   },
   "dependencies": {
     "three": "^0.186.1",
