@@ -32,7 +32,7 @@ deliberate behavior change. Source references are to `BallDropGame/GTBallDrop/`.
 | Pit walls | 8 boxes, 0.2 × 2.3 × 257.6, at x = lane edge − 0.1, y −0.3, z −257.6 | the fire pits are open shafts between them |
 | Dividers (exact) | 8 cylinders, r 0.1, 200 tall, at x = ±1, ±3, ±5, ±7, y 2.0 | |
 | Fire effects | 2 per pit at (lane x, 1, −1): FireEffect(r 1, h 5, intensity 0.4, speed 24) and (1, 1.5, 0.25, 16) | |
-| Materials | every geometry node references material 26, `new_wall` | treated as texture/Wall (see below) |
+| Materials | every geometry node references material 26, `new_wall` | a gravel texture (see [Textures](#textures)) |
 
 `BallCatcher_RED.mdl`: a torus plus a cylinder, outer radius about 0.5, ring about 0.13 above
 the slot. `GTBall_BLUE.mdl`: a sphere of radius about 0.25.
@@ -45,7 +45,7 @@ The C4 build shipped two world versions, and `config.world` picks one:
 
 | `world` | C4 world | Default in | Look |
 |---|---|---|---|
-| `classic` (default) | `GTBallDrop_NO_PT_LIGHTS` | May 2011 until Oct 2012 | "Bright" skybox (cloud ceiling, sun overhead), hazed about halfway to white by the fog; yellow `Flame` pits |
+| `classic` (default) | `GTBallDrop_NO_PT_LIGHTS` | May 2011 until Oct 2012 | "Bright" skybox (cloud ceiling, sun overhead), hazed about halfway to white by the fog; yellow `Flame` pits. Stand-ins in the port, see [Textures](#textures) |
 | `clean` | `GTBallDrop_clean` | commit `04e42b8`, Oct 17 2012, onward | no skybox; a ClearProperty makes the background pale yellow (1, 1, 0.63); `red_flame` pits |
 
 Both worlds share the rest: the geometry, the fog space, one light, and the ambient light.
@@ -54,14 +54,23 @@ A lab's `variables.cfg` could override `GTBallWorldFilePath`; the one-time conve
 (`tools/convert-c4-config.ts`) maps it to `appearance.world`.
 The URL parameter `?world=classic` forces a world for side-by-side comparison.
 
-How the skybox was recovered:
-* The textures were decoded from C4's `.tex` format (RLE BGRA, and DXT5 for the stone
-  textures) with `tools/c4-assets/c4tex.py`, a port of `Image::DecompressImageRLE_RGBA32`.
-* The cube is built with exactly the vertex positions and UVs from `Skybox` in
-  `C4Skybox.cpp`.
-* Face order and orientation were **verified from pixels**. All four side seams match with
-  a mean difference of 0.4–0.6 out of 255 (mismatched pairs give 10–16). The seams with
-  the top and bottom faces match within 0.1–0.8, against 14–38 for the alternatives.
+### Textures
+
+Only the lab's own textures are used from the C4 version: `red_flame` and `blue_flame`,
+decoded from C4's `.tex` format by `tools/c4-assets/`. The rest of the original scene used
+C4 engine and stock content, which isn't redistributable, so the port generates stand-ins
+(`apps/game-web/src/procedural.ts` and the sky shader in `renderer.ts`):
+
+| Original (C4 content) | Stand-in |
+|---|---|
+| "Bright" skybox: a sunlit, broken cloud ceiling fading to a bright horizon, blue below | shader: domain-warped fBm clouds projected onto a plane overhead, a horizon haze, blue below. Drawn on the same unit cube, and fogged with C4's formula |
+| `C4/noise` (the fire shader's distortion) | seamless fBm in R and G, rescaled to the original's measured statistics (R mean 0.448, sd 0.18; G 0.588, 0.193), since the flames' motion and downward bias depend on them |
+| `texture/Wall` (gravel on the ground, pit walls and poles) | seamless cellular pebbles with fBm grit |
+| `texture/Flame` (the classic look's yellow pits) | `red_flame`, recoloured yellow-white |
+
+The skybox face order and orientation were worked out (and verified from pixels along all
+eight seams) while recovering the original. They mattered for placing its clouds and sun,
+but the procedural sky doesn't need them.
 
 **Fire** is a port of C4's `FireEffect` (a billboard quad) and its fire shader: three
 scrolling noise samples distort the flame texture's UVs, with the noise speeds taken from

@@ -33,10 +33,7 @@ self-hosted GitHub such as github.gatech.edu. To deploy from a self-hosted repos
 build in its CI instead and upload with Wrangler (`npx wrangler pages deploy
 apps/game-web/dist-demo --project-name=…`, with a Cloudflare API token as a CI secret).
 
-## Before making anything public
+## Third-party content
 
-`apps/game-web/public/c4/` contains textures extracted from the C4 engine's stock content
-(the sky, noise, wall and yellow-flame textures). These are included in the demo build and
-in the repository history. See `apps/game-web/public/c4/README.md`: check that the lab's
-C4 license allows publishing them before deploying the demo publicly or making the
-repository public.
+None. The only images are the lab's own flame textures (`apps/game-web/public/c4/`).
+Everything else in the scene is generated procedurally (see FIDELITY.md, *Textures*).

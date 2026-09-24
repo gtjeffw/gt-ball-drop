@@ -3,8 +3,7 @@
     python3 tools/c4-assets/extract.py ~/Projects/BallDropGame
 
 Writes PNGs to apps/game-web/public/c4/. Pixel rows are kept in C4's stored order
-(first stored row = texture v = 0), so load them in three.js with flipY = false. The
-skybox orientation was checked by matching pixels along all eight seams.
+(first stored row = texture v = 0), so load them in three.js with flipY = false.
 """
 import os
 import sys
@@ -16,14 +15,10 @@ src = os.path.expanduser(sys.argv[1] if len(sys.argv) > 1 else '~/Projects/BallD
 dst = os.path.join(os.path.dirname(__file__), '..', '..', 'apps', 'game-web', 'public', 'c4')
 
 JOBS = [
-    # Skybox of the pre-Oct-2012 worlds (GTBallDrop.wld, GTBallDrop_NO_PT_LIGHTS.wld).
-    # C4 face order: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z (top), 5 -Z (bottom).
-    *[(f'old_data_GTBallDrop/sky/Bright{i + 1}.tex', f'sky/bright/{i}.png', False) for i in range(6)],
-    ('Data/GTBallDrop/texture/red_flame.tex', 'texture/red_flame.png', True),   # clean world's fire pits
+    # Only the lab's own GT Ball Drop textures. C4 engine/stock content is never extracted:
+    # the sky, noise and gravel are procedural (apps/game-web/src/procedural.ts).
+    ('Data/GTBallDrop/texture/red_flame.tex', 'texture/red_flame.png', True),   # fire pits
     ('Data/GTBallDrop/texture/blue_flame.tex', 'texture/blue_flame.png', True), # a missed ball on fire
-    ('old_data_GTBallDrop/texture/Flame.tex', 'texture/Flame.png', True),       # classic world's fire pits
-    ('old_data_GTBallDrop/texture/Wall.tex', 'texture/Wall.png', False),        # new_wall material
-    ('Data/C4/C4/noise.tex', 'texture/noise.png', False),                       # the fire shader's distortion noise
 ]
 
 for rel, out, alpha in JOBS:

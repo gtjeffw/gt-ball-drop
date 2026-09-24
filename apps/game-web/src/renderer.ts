@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GEOMETRY, laneX } from '@gtbd/core';
 import type { AppearanceConfig, DomainEvent, ExperimentSnapshot } from '@gtbd/protocol';
+import { fireNoise, gravel, recolorToYellowFlame, type Rgba } from './procedural';
 
 /**
  * How the C4 original looked, read from the world file and the engine source. See
@@ -15,27 +16,61 @@ const C4_LOOK = {
   lightFrom: new THREE.Vector3(-0.00766, -0.5314, 0.8471),
   /** The fog space, identical in both worlds: constant density, white, plane y = 2 facing the camera. */
   fog: { density: 0.05, color: new THREE.Color(1, 1, 1), plane: new THREE.Vector4(0, -1, 0, 2) },
-  /** Clear colour: a ClearProperty on the clean world's zone. The classic world has none (black), but draws a skybox. */
+  /** Clear colour: a ClearProperty on the clean world's zone. The classic world has none (black), but draws a sky. */
   clearColor: { clean: new THREE.Color(1, 1, 0.6275), classic: new THREE.Color(0, 0, 0) },
 } as const;
 
 /** C4 did its lighting in gamma space with no colour management, so do the same. */
 THREE.ColorManagement.enabled = false;
 
-/** Textures extracted from the original C4 assets (tools/c4-assets/extract.py). */
+/** The lab's own flame textures, from the C4 version (tools/c4-assets/extract.py). */
 const C4 = `${import.meta.env.BASE_URL}c4/`;
 const loader = new THREE.TextureLoader();
 
-/** C4 textures store the row for v = 0 first, so don't let three.js flip them. */
-function c4Texture(path: string, repeat?: [number, number]): THREE.Texture {
+/** These store the row for v = 0 first, so don't let three.js flip them. */
+function c4Texture(path: string): THREE.Texture {
   const t = loader.load(C4 + path);
   t.flipY = false;
   t.colorSpace = THREE.NoColorSpace;
-  if (repeat) {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(...repeat);
-    t.anisotropy = 8;
-  }
+  return t;
+}
+
+/** red_flame recoloured yellow: the classic look's fire pits. */
+function yellowFlameTexture(): THREE.Texture {
+  const canvas = document.createElement('canvas');
+  // red_flame's size, so the GPU storage allocated at first upload already fits.
+  canvas.width = 128;
+  canvas.height = 256;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.flipY = false;
+  tex.colorSpace = THREE.NoColorSpace;
+  new THREE.ImageLoader().load(C4 + 'texture/red_flame.png', (img) => {
+    if (img.width !== canvas.width || img.height !== canvas.height) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      tex.dispose(); // a new size needs new GPU storage
+    }
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const pixels = ctx.getImageData(0, 0, img.width, img.height);
+    recolorToYellowFlame(pixels.data);
+    ctx.putImageData(pixels, 0, 0);
+    tex.needsUpdate = true;
+  });
+  return tex;
+}
+
+/** A procedural RGBA image as a tiling, mipmapped texture. */
+function proceduralTexture(img: Rgba, repeat: [number, number] = [1, 1]): THREE.DataTexture {
+  const t = new THREE.DataTexture(img.data, img.size, img.size, THREE.RGBAFormat);
+  t.colorSpace = THREE.NoColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(...repeat);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.anisotropy = 8;
+  t.needsUpdate = true;
   return t;
 }
 
@@ -54,7 +89,7 @@ export class Renderer {
   private readonly pits: FireEffect[] = [];
   private readonly sparks: Sparks[] = [];
   private readonly ballFlameTexture = c4Texture('texture/blue_flame.png');
-  private readonly skybox: THREE.Group | null;
+  private readonly skybox: THREE.Mesh | null;
   private readonly modelShading: number;
   private readonly fogUniforms = {
     fogPlane: { value: C4_LOOK.fog.plane },
@@ -81,7 +116,7 @@ export class Renderer {
     this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(lx, ly, lz);
 
-    this.skybox = world === 'classic' ? this.makeSkybox('sky/bright') : null;
+    this.skybox = world === 'classic' ? this.makeSky() : null;
     if (this.skybox) this.scene.add(this.skybox);
 
     // three.js's Lambert BRDF divides by pi, so scale by pi to get C4's albedo * (ambient + N.L).
@@ -105,7 +140,7 @@ export class Renderer {
     // The "Fire Pits": two FireEffects per lane at (x, 1, -1), as in the world file. Red in
     // the clean world, yellow in the classic one. Height and brightness can be scaled down
     // from the original (appearance.flameHeightScale / flameOpacity).
-    const pitTexture = c4Texture(world === 'classic' ? 'texture/Flame.png' : 'texture/red_flame.png');
+    const pitTexture = world === 'classic' ? yellowFlameTexture() : c4Texture('texture/red_flame.png');
     for (let lane = 0; lane < GEOMETRY.laneCount; lane++) {
       for (const [radius, height, intensity, speed] of [
         [1, 5, 0.4, 24],
@@ -154,10 +189,11 @@ export class Renderer {
     return material;
   }
 
-  /** The measured world geometry. All of it uses the new_wall material (texture/Wall). */
+  /** The measured world geometry. All of it shares one material, textured with procedural gravel. */
   private buildStage(): void {
     const g = GEOMETRY;
-    const wallMat = (repeat: [number, number]) => this.fogged(new THREE.MeshLambertMaterial({ map: c4Texture('texture/Wall.png', repeat) }));
+    const gravelImage = gravel();
+    const wallMat = (repeat: [number, number]) => this.fogged(new THREE.MeshLambertMaterial({ map: proceduralTexture(gravelImage, repeat) }));
 
     // Ground: the top face of the 1000-unit slab, from just behind the lanes to the horizon.
     const gw = g.ground.xMax - g.ground.xMin;
@@ -209,68 +245,93 @@ export class Renderer {
   }
 
   /**
-   * The C4 skybox: six faces with exactly C4Skybox.cpp's vertex positions and texture
-   * coordinates (Z up; faces 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z). Its flags are 0, so the
-   * fog applies to it too, using C4's "infinite vertex" fog: the plane distances are taken
-   * at 1024 units out, but the ray length is |camera - v| in the sky cube's own space,
-   * which is why the sky came out about half hazed rather than fully white.
+   * The sky for the classic look: a procedural stand-in for the C4 "Bright" skybox. Its
+   * features: a broken, sunlit cloud ceiling (domain-warped fBm projected onto a plane
+   * overhead), a bright haze at the horizon, and blue below it. It sits on a unit cube
+   * around the camera, like C4's skybox, and gets the same fog: C4's "infinite vertex" fog,
+   * with plane distances taken 1024 units out but the ray length |camera - v| in the cube's
+   * own space. That is why the sky comes out about half hazed rather than fully white.
    */
-  private makeSkybox(dir: string): THREE.Group {
-    type Corner = [x: number, y: number, z: number, u: number, v: number];
-    const faces: ((a: number, b: number) => Corner)[] = [
-      (k, j) => { const z = 1 - k, y = 1 - j; return [1, 2 * y - 1, 2 * z - 1, 1 - y, z]; },
-      (k, j) => { const z = 1 - k, y = j; return [-1, 2 * y - 1, 2 * z - 1, y, z]; },
-      (k, i) => { const z = 1 - k, x = i; return [2 * x - 1, 1, 2 * z - 1, x, z]; },
-      (k, i) => { const z = 1 - k, x = 1 - i; return [2 * x - 1, -1, 2 * z - 1, 1 - x, z]; },
-      (j, i) => { const y = 1 - j, x = 1 - i; return [2 * x - 1, 2 * y - 1, 1, 1 - x, y]; },
-      (j, i) => { const y = 1 - j, x = i; return [2 * x - 1, 2 * y - 1, -1, x, y]; },
-    ];
-    const group = new THREE.Group();
-    faces.forEach((corner, index) => {
-      const pts = [corner(0, 0), corner(0, 1), corner(1, 0), corner(1, 1)];
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p[0], p[1], p[2]]), 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(pts.flatMap((p) => [p[3], p[4]]), 2));
-      geo.setIndex([0, 1, 2, 1, 3, 2]);
-      const map = c4Texture(`${dir}/${index}.png`);
-      map.wrapS = map.wrapT = THREE.ClampToEdgeWrapping;
-      const mat = new THREE.ShaderMaterial({
-        uniforms: { map: { value: map }, cameraPos: { value: this.camera.position }, ...this.fogUniforms },
-        vertexShader: /* glsl */ `
-          varying vec2 vUv;
-          varying vec3 vDir;
-          void main() {
-            vUv = uv;
-            vDir = position; // the unit-cube vertex, as C4's OPOS
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }`,
-        fragmentShader: /* glsl */ `
-          uniform sampler2D map;
-          uniform vec3 cameraPos;
-          uniform vec4 fogPlane;
-          uniform float fogDensity;
-          uniform vec3 fogColor;
-          varying vec2 vUv;
-          varying vec3 vDir;
-          void main() {
-            vec3 far = vDir * 1024.0 + cameraPos;
-            float fdtp = dot(fogPlane.xyz, far) + fogPlane.w;
-            float fdtv = dot(fogPlane.xyz, vDir) * -1024.0;
-            float inside = clamp(-fdtp / abs(fdtv), 0.0, 1.0);
-            float f = clamp(exp(-fogDensity * inside * length(cameraPos - vDir)), 0.0, 1.0);
-            gl_FragColor = vec4(mix(fogColor, texture2D(map, vUv).rgb, f), 1.0);
-          }`,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        depthTest: false,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.renderOrder = -1;
-      mesh.frustumCulled = false;
-      group.add(mesh);
+  private makeSky(): THREE.Mesh {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { cameraPos: { value: this.camera.position }, ...this.fogUniforms },
+      vertexShader: /* glsl */ `
+        varying vec3 vDir;
+        void main() {
+          vDir = position; // the unit-cube vertex, as C4's OPOS
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 cameraPos;
+        uniform vec4 fogPlane;
+        uniform float fogDensity;
+        uniform vec3 fogColor;
+        varying vec3 vDir;
+
+        float hash12(vec2 p) {
+          vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+          p3 += dot(p3, p3.yzx + 33.33);
+          return fract((p3.x + p3.y) * p3.z);
+        }
+        float noise2(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x), mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float a = 0.5;
+          for (int i = 0; i < 5; i++) {
+            v += a * noise2(p);
+            p = p * 2.02 + vec2(19.7, 7.3);
+            a *= 0.5;
+          }
+          return v;
+        }
+
+        vec3 sky(vec3 d) {
+          d = normalize(d);
+          float up = d.z;
+          vec3 horizon = vec3(0.97, 0.98, 1.0);
+          if (up <= 0.0) {
+            vec3 below = mix(vec3(0.34, 0.48, 0.72), vec3(0.22, 0.29, 0.52), clamp(-up * 3.0, 0.0, 1.0));
+            return mix(horizon, below, smoothstep(0.0, 0.08, -up));
+          }
+          vec3 sunDir = normalize(vec3(-0.55, 0.45, 0.70));
+          float sun = max(dot(d, sunDir), 0.0);
+          // The cloud ceiling, seen from below: project onto a plane overhead, then warp.
+          vec2 p = d.xy / (up + 0.12) * 1.3;
+          vec2 warp = vec2(fbm(p * 0.7 + vec2(3.1, -1.7)), fbm(p * 0.7 + vec2(-2.4, 4.3))) - 0.5;
+          p += warp * 0.9;
+          float body = fbm(p);
+          float detail = fbm(p * 2.3 + vec2(7.0, 1.0));
+          float cover = smoothstep(0.30, 0.62, 0.7 * body + 0.3 * detail);
+          vec3 blue = mix(vec3(0.62, 0.72, 0.90), vec3(0.30, 0.44, 0.78), smoothstep(0.0, 0.9, up));
+          vec3 cloud = mix(vec3(0.60, 0.62, 0.72), vec3(0.98, 0.90, 0.70), smoothstep(0.35, 0.85, detail));
+          cloud += vec3(1.0, 0.85, 0.5) * pow(sun, 6.0) * 0.5;
+          vec3 col = mix(blue, cloud, cover);
+          col += vec3(1.0, 0.9, 0.6) * pow(sun, 24.0) * 0.6;
+          return mix(horizon, col, smoothstep(0.0, 0.07, up));
+        }
+
+        void main() {
+          vec3 far = vDir * 1024.0 + cameraPos;
+          float fdtp = dot(fogPlane.xyz, far) + fogPlane.w;
+          float fdtv = dot(fogPlane.xyz, vDir) * -1024.0;
+          float inside = clamp(-fdtp / abs(fdtv), 0.0, 1.0);
+          float f = clamp(exp(-fogDensity * inside * length(cameraPos - vDir)), 0.0, 1.0);
+          gl_FragColor = vec4(mix(fogColor, clamp(sky(vDir), 0.0, 1.0), f), 1.0);
+        }`,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      depthTest: false,
     });
-    group.scale.setScalar(1000);
-    return group;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), mat);
+    mesh.renderOrder = -1;
+    mesh.frustumCulled = false;
+    mesh.scale.setScalar(1000);
+    return mesh;
   }
 
   handleEvent(e: DomainEvent): void {
@@ -356,7 +417,7 @@ function shadedMaterial(diffuse: [number, number, number], emission: [number, nu
   });
 }
 
-const noiseTexture = c4Texture('texture/noise.png', [1, 1]);
+const noiseTexture = proceduralTexture(fireNoise());
 
 /**
  * Port of C4's FireEffect (C4Effects.cpp) and its fire shader (FireProcess in C4Shaders.cpp).
