@@ -12,6 +12,18 @@ the same lane as the last one or next to it, so following them is like holding a
 Every catch, miss and paddle move is logged with its timing, which shows how much the
 secondary task interferes with the primary one.
 
+<p align="center">
+  <img src="docs/images/gameplay.jpg" width="49%" alt="A session in progress: blue balls falling down seven lanes towards the red paddle, under a cloudy sky">
+  <img src="docs/images/setup-screen.jpg" width="49%" alt="The browser-mode setup screen, with the session, ball, calibration and look settings">
+</p>
+<p align="center"><em>Left: a session in progress (the classic look). Right: the browser-mode setup screen.</em></p>
+
+**Try it in your browser: <https://gt-ball-drop.jeffwilson.dev>.** Nothing to install. It
+runs in [browser mode](docs/INSTRUCTIONS.md#browser-mode-experimenter-in-the-room): use it
+as a demo, or to run a study session with the experimenter in the room. The session data
+stays on that computer and is downloaded at the end. For a short first look, open
+<https://gt-ball-drop.jeffwilson.dev/?preset=quick>.
+
 Before the study blocks, an optional **difficulty calibration** adjusts the ball speed and
 the time between drops until the participant catches a target share of the balls. This
 puts every participant at a comparable level of difficulty, and keeps the task hard enough
