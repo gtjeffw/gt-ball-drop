@@ -3,7 +3,7 @@ import type { WebSocket } from 'ws';
 import type { ControlCommand, EventEnvelope, ExperimentStatus } from '@gtbd/protocol';
 
 /**
- * The control API: how another program (a primary task, a script) drives the experiment.
+ * The control API: how another program (the secondary task's software, a script) drives the experiment.
  * Both hosts serve it on their own machine, on the same port as the UI:
  *
  *   GET  /api/status                         -> { connected, status }

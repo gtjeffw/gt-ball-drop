@@ -45,7 +45,7 @@ The C4 build shipped two world versions, and `config.world` picks one:
 
 | `world` | C4 world | Default in | Look |
 |---|---|---|---|
-| `classic` (default) | `GTBallDrop_NO_PT_LIGHTS` | May 2011 until Oct 2012 | "Bright" skybox (cloud ceiling, sun overhead), hazed about halfway to white by the fog; yellow `Flame` pits. Stand-ins in the port, see [Textures](#textures) |
+| `classic` (default) | `GTBallDrop_NO_PT_LIGHTS` | May 2011 until Oct 2012 | "Bright" skybox (cloud ceiling, sun overhead), hazed about halfway to white by the fog; yellow `Flame` pits. Generated procedurally in the port, see [Textures](#textures) |
 | `clean` | `GTBallDrop_clean` | commit `04e42b8`, Oct 17 2012, onward | no skybox; a ClearProperty makes the background pale yellow (1, 1, 0.63); `red_flame` pits |
 
 Both worlds share the rest: the geometry, the fog space, one light, and the ambient light.
@@ -56,21 +56,16 @@ The URL parameter `?world=classic` forces a world for side-by-side comparison.
 
 ### Textures
 
-Only the lab's own textures are used from the C4 version: `red_flame` and `blue_flame`,
-decoded from C4's `.tex` format by `tools/c4-assets/`. The rest of the original scene used
-C4 engine and stock content, which isn't redistributable, so the port generates stand-ins
+The port uses the original's `red_flame` and `blue_flame`, decoded from C4's `.tex` format
+by `tools/c4-assets/`. The other textures are generated procedurally
 (`apps/game-web/src/procedural.ts` and the sky shader in `renderer.ts`):
 
-| Original (C4 content) | Stand-in |
+| Original | Port |
 |---|---|
 | "Bright" skybox: a sunlit, broken cloud ceiling fading to a bright horizon, blue below | shader: domain-warped fBm clouds projected onto a plane overhead, a horizon haze, blue below. Drawn on the same unit cube, and fogged with C4's formula |
 | `C4/noise` (the fire shader's distortion) | seamless fBm in R and G, rescaled to the original's measured statistics (R mean 0.448, sd 0.18; G 0.588, 0.193), since the flames' motion and downward bias depend on them |
 | `texture/Wall` (gravel on the ground, pit walls and poles) | seamless cellular pebbles with fBm grit |
 | `texture/Flame` (the classic look's yellow pits) | `red_flame`, recoloured yellow-white |
-
-The skybox face order and orientation were worked out (and verified from pixels along all
-eight seams) while recovering the original. They mattered for placing its clouds and sun,
-but the procedural sky doesn't need them.
 
 **Fire** is a port of C4's `FireEffect` (a billboard quad) and its fire shader: three
 scrolling noise samples distort the flame texture's UVs, with the noise speeds taken from
@@ -116,9 +111,9 @@ Checked against the C++ and the C4 engine source.
 | World clock | whole-millisecond ticks with a carried remainder; a frame's delta capped at 250 ms | 1 ms steps; a call is capped at 5 s | same in normal running |
 | Spawn interval | a spawn is due at `last + spawnTime`, but is checked only once per frame, and `last` is set to that frame's time, so each interval is rounded up to a frame boundary (about +8 ms on average at 60 fps) | exact to the millisecond | **differs slightly**: about 1% at 750 ms, up to about 8% at the 100 ms minimum. Frame-rate dependent in the original, so it isn't emulated |
 | Ball fall | constant speed × dt, spin 1°/ms | same | same. The spin is invisible, because the ball has no texture |
-| Ball look | GTBall_BLUE: diffuse + emission (0, 0, 1), white specular (exponent 47), no texture | same material; extra shading via `modelShading` | fixed (was a striped stand-in) |
-| Catcher look | BallCatcher_RED: diffuse (1, 0.02, 0), emission (1, 0, 0), white specular (exponent 27) | same material | fixed |
-| Catch effect | SparkSystem(100): blue line particles, 0–749 ms life, up to 0.04 units/ms, gravity −9.8e-6 units/ms², fading over the last 100 ms; streaks 16.67 ms of travel long and 0.5 wide, C4's built-in particle texture, (SRC_ALPHA, ONE) | ported | ported (was a yellow stand-in). Not yet seen on screen: a burst lasts under 0.75 s |
+| Ball look | GTBall_BLUE: diffuse + emission (0, 0, 1), white specular (exponent 47), no texture | same material; extra shading via `modelShading` | same |
+| Catcher look | BallCatcher_RED: diffuse (1, 0.02, 0), emission (1, 0, 0), white specular (exponent 27) | same material | same |
+| Catch effect | SparkSystem(100): blue line particles, 0–749 ms life, up to 0.04 units/ms, gravity −9.8e-6 units/ms², fading over the last 100 ms; streaks 16.67 ms of travel long and 0.5 wide, a sharply peaked particle texture, (SRC_ALPHA, ONE) | same | same |
 | Miss effect | 2 × FireEffect(1.5, 5, 0.5) blue_flame on the ball | same | same |
 | Sound | none (all sound code is commented out) | none | same |
 | Mouse cursor | the interface manager shows it only while a window is open | hidden during play | same |
@@ -205,7 +200,7 @@ Checked against the C++ and the C4 engine source.
 | 6 | After `DoBlockBegin` pauses, the same frame could still spawn a ball behind the intro dialog. | The first ball waits for the dialog to close. | The ball was frozen behind the dialog anyway. |
 | 7 | Balls left over from an admin-forced calibration block carried into the next one and were counted there. | Cleared at every block boundary. | Stats belong to one block. |
 | 8 | The admin guessed the game state by counting its own button presses. | The admin reads the live status. | Removes a stuck-dialog failure mode. |
-| 9 | Defaults (`Game::Game()`): 5 balls per block, speed 0.001, a ball every 750 ms, stay chance 50%, calibration on with 5 balls per calibration block. | 200 balls per block, speed 0.01, a ball every 400 ms, stay chance 0 (always change lanes), calibration off, 100 balls per calibration block. | Lab decision (Sep 2026). Only affects settings a config leaves out. The C4 converter fills missing variables with the C4 defaults, not these. |
+| 9 | Defaults (`Game::Game()`): 5 balls per block, speed 0.001, a ball every 750 ms, stay chance 50%, calibration on with 5 balls per calibration block and a target catch rate of 0.8. | 200 balls per block, speed 0.01, a ball every 400 ms, stay chance 0 (always change lanes), calibration off, 100 balls per calibration block, target 0.85. | Lab decision (Sep 2026). Only affects settings a config leaves out. The C4 converter fills missing variables with the C4 defaults, not these. |
 
 ## New data (not in the original log)
 

@@ -1,7 +1,6 @@
 /**
- * Procedural stand-ins for the C4 engine's stock textures, so the repository and the
- * public website contain no third-party art. Everything is seamless (tileable) and
- * deterministic. Pure functions returning RGBA bytes; renderer.ts turns them into textures.
+ * The scene's procedural textures: the fire noise, the gravel and the classic look's yellow
+ * flame. Everything is seamless (tileable) and deterministic. Pure functions returning RGBA bytes; renderer.ts turns them into textures.
  */
 
 export interface Rgba {
@@ -93,8 +92,8 @@ function channelStats(values: Float32Array): { mean: number; sd: number } {
 }
 
 /**
- * Stand-in for C4's `C4/noise` texture, used by the fire shader to distort flames. Two
- * independent fBm fields in R and G, rescaled to the original's measured statistics: the
+ * The noise texture the fire shader uses to distort flames. Two independent fBm fields in
+ * R and G, rescaled to the statistics of the original's noise texture: the
  * shader's distortion depends on them, and G's mean above 0.5 pulls the flames down.
  */
 export const C4_NOISE_STATS = { r: { mean: 0.448, sd: 0.18 }, g: { mean: 0.588, sd: 0.193 } } as const;
@@ -125,7 +124,7 @@ export function fireNoise(size = 256): Rgba {
 }
 
 /**
- * Stand-in for the gravel "Wall" texture on the ground, pit walls and poles: a packed layer
+ * The gravel on the ground, pit walls and poles: a packed layer
  * of small pebbles (cellular noise), each with its own grey-brown tint, dark gaps between
  * them, and fBm grit on top.
  */
@@ -156,8 +155,8 @@ export function gravelAt(s: number, t: number): [number, number, number] {
 }
 
 /**
- * Stand-in for C4's yellow "Flame" texture (the classic world's fire pits): the lab's own
- * red_flame, recoloured from red to a yellow-white candle flame. Works in place on RGBA
+ * The classic look's yellow pit flame: red_flame,
+ * recoloured from red to a yellow-white candle flame. Works in place on RGBA
  * pixels; alpha is kept.
  */
 export function recolorToYellowFlame(pixels: Uint8ClampedArray | Uint8Array): void {

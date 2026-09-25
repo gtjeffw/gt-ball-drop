@@ -36,8 +36,3 @@ apps/game-web/dist-browser --project-name=…`, with a Cloudflare API token as a
 
 Session data is kept in the browser's storage for the site's origin. Moving the site to a
 new domain starts with empty storage, so download any stored sessions first.
-
-## Third-party content
-
-None. The only images are the lab's own flame textures (`apps/game-web/public/c4/`).
-Everything else in the scene is generated procedurally (see FIDELITY.md, *Textures*).

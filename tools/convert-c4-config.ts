@@ -27,7 +27,7 @@ const C4_DEFAULTS = {
   ballSpawnTimeMs: 750,
   ballSpeed: 0.001,
   laneChangeStayChance: 50,
-  calibration: { enabled: true, numTrials: 5 },
+  calibration: { enabled: true, numTrials: 5, targetAvg: 0.8 },
 } satisfies DeepPartial<ExperimentConfig>;
 
 export function convertC4Config(text: string): ConversionResult {

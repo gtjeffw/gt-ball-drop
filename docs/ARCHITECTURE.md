@@ -1,7 +1,7 @@
 # Architecture
 
-GT Ball Drop is a dual-task psychology experiment: participants catch falling balls while
-doing a second task. This repo is a web port of the 2010–2017 C4-engine version
+GT Ball Drop is a dual-task psychology experiment: participants catch falling balls
+(typically the primary task, a stand-in for driving) while doing a secondary task. This repo is a web port of the 2010–2017 C4-engine version
 (`BallDropGame`) and its Java/Swing admin panel (`BallDropAdmin`).
 
 ## Principles

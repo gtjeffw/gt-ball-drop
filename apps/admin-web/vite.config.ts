@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { licenseNotices } from '../../tools/licenses.mjs';
 
 const hostPort = process.env.GTBD_HOST_PORT ?? '4290';
 
@@ -9,4 +10,5 @@ export default defineConfig({
     proxy: { '/ui': { target: `ws://127.0.0.1:${hostPort}`, ws: true } },
   },
   build: { target: 'es2022' },
+  plugins: [licenseNotices('the GT Ball Drop admin panel')],
 });

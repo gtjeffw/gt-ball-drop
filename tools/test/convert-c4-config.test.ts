@@ -19,7 +19,7 @@ describe('convertC4Config', () => {
     expect(r.config.appearance).toEqual({ ...DEFAULT_CONFIG.appearance, world: 'classic' });
     // Not in the file: what the C4 version would have used, not today's defaults.
     expect(r.config).toMatchObject({ numBlocks: 3, ballSpeed: 0.001, ballSpawnTimeMs: 750, laneChangeStayChance: 50 });
-    expect(r.config.calibration).toMatchObject({ enabled: false, numTrials: 5, speedIncr: 0.003 });
+    expect(r.config.calibration).toMatchObject({ enabled: false, numTrials: 5, targetAvg: 0.8, speedIncr: 0.003 });
     expect(convertC4Config('').config.calibration.enabled).toBe(true);
     expect(r.ignored).toEqual(['GTBallBallModelPath']);
     expect(r.unknown).toEqual(['applicName']);

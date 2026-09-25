@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use GT Ball Drop in your research, please cite it as below."
+title: "GT Ball Drop"
+abstract: >-
+  A ball-catching task for dual-task user studies: a continuous visual-motor primary task,
+  with adaptive difficulty calibration and detailed event logs, that can stand in for an
+  activity like driving while participants perform a secondary task such as an auditory menu.
+type: software
+authors:
+  - given-names: Jeff
+    family-names: Wilson
+    affiliation: Georgia Institute of Technology
+    email: jeff.wilson@gatech.edu
+version: 3.0.0
+license: MIT
+repository-code: "https://github.com/gtjeffw/gt-ball-drop"
+keywords:
+  - dual-task
+  - multitasking
+  - human factors
+  - auditory menus
+  - psychology experiment
+references:
+  - type: thesis
+    thesis-type: "Doctoral dissertation"
+    title: "Push and Pull Menus for Auditory Interfaces"
+    authors:
+      - given-names: Jeff
+        family-names: Wilson
+    institution:
+      name: Georgia Institute of Technology
+    year: 2016
+    url: "https://hdl.handle.net/1853/56308"

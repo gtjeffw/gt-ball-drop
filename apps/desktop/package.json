@@ -1,6 +1,7 @@
 {
   "name": "@gtbd/desktop",
   "version": "3.0.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "out/main.cjs",

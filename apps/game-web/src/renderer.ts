@@ -23,13 +23,13 @@ const C4_LOOK = {
 /** C4 did its lighting in gamma space with no colour management, so do the same. */
 THREE.ColorManagement.enabled = false;
 
-/** The lab's own flame textures, from the C4 version (tools/c4-assets/extract.py). */
-const C4 = `${import.meta.env.BASE_URL}c4/`;
+/** The flame textures from the original GT Ball Drop (tools/c4-assets/extract.py). */
+const TEXTURES = `${import.meta.env.BASE_URL}textures/`;
 const loader = new THREE.TextureLoader();
 
 /** These store the row for v = 0 first, so don't let three.js flip them. */
-function c4Texture(path: string): THREE.Texture {
-  const t = loader.load(C4 + path);
+function flameTexture(file: string): THREE.Texture {
+  const t = loader.load(TEXTURES + file);
   t.flipY = false;
   t.colorSpace = THREE.NoColorSpace;
   return t;
@@ -44,7 +44,7 @@ function yellowFlameTexture(): THREE.Texture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.flipY = false;
   tex.colorSpace = THREE.NoColorSpace;
-  new THREE.ImageLoader().load(C4 + 'texture/red_flame.png', (img) => {
+  new THREE.ImageLoader().load(TEXTURES + 'red_flame.png', (img) => {
     if (img.width !== canvas.width || img.height !== canvas.height) {
       canvas.width = img.width;
       canvas.height = img.height;
@@ -91,7 +91,7 @@ export class Renderer {
   private readonly sparks: Sparks[] = [];
   /** Shared by every spark system, so its shader stays compiled between catches. */
   private readonly sparkMaterial = sparkMaterial();
-  private readonly ballFlameTexture = c4Texture('texture/blue_flame.png');
+  private readonly ballFlameTexture = flameTexture('blue_flame.png');
   private readonly skybox: THREE.Mesh | null;
   private readonly modelShading: number;
   private readonly fogUniforms = {
@@ -143,7 +143,7 @@ export class Renderer {
     // The "Fire Pits": two FireEffects per lane at (x, 1, -1), as in the world file. Red in
     // the clean world, yellow in the classic one. Height and brightness can be scaled down
     // from the original (appearance.flameHeightScale / flameOpacity).
-    const pitTexture = world === 'classic' ? yellowFlameTexture() : c4Texture('texture/red_flame.png');
+    const pitTexture = world === 'classic' ? yellowFlameTexture() : flameTexture('red_flame.png');
     for (let lane = 0; lane < GEOMETRY.laneCount; lane++) {
       for (const [radius, height, intensity, speed] of [
         [1, 5, 0.4, 24],
@@ -248,7 +248,7 @@ export class Renderer {
   }
 
   /**
-   * The sky for the classic look: a procedural stand-in for the C4 "Bright" skybox. Its
+   * The sky for the classic look, generated procedurally after the original's "Bright" skybox. Its
    * features: a broken, sunlit cloud ceiling (domain-warped fBm projected onto a plane
    * overhead), a bright haze at the horizon, and blue below it. It sits on a unit cube
    * around the camera, like C4's skybox, and gets the same fog: C4's "infinite vertex" fog,
@@ -516,48 +516,49 @@ class FireEffect {
   }
 }
 
-/** FireAttribute::CalculateNoiseVelocities: noise scroll speeds in uv per ms. */
+/**
+ * The fire shader's noise scroll speeds, in texture repeats per 120 s, for the two speeds
+ * the scene uses (the pits' 16 and 24; a burning ball's is 24 too). `up` are the three
+ * upward speeds; each sideways speed is a random prime in `side`, with a random sign.
+ * Matched to the C4 original's fire.
+ */
+const FIRE_NOISE: Record<number, { up: [number, number, number]; side: [number, number] }> = {
+  16: { up: [61, 127, 241], side: [23, 79] },
+  24: { up: [101, 199, 401], side: [31, 131] },
+};
+
+const isPrime = (n: number) => {
+  for (let d = 2; d * d <= n; d++) if (n % d === 0) return false;
+  return n > 1;
+};
+
+/** Noise scroll velocities in uv per ms: [sideways, upward] for each of the three lookups. */
 function noiseVelocities(speed: number): [[number, number], [number, number], [number, number]] {
-  const fireData: [number, number, number, number, number][] = [
-    [3, 7, 13, 0, 3], [5, 11, 23, 1, 4], [7, 13, 29, 1, 5], [11, 23, 47, 2, 6], [13, 29, 53, 3, 7],
-    [17, 37, 67, 4, 9], [19, 41, 79, 4, 10], [23, 47, 97, 4, 11], [29, 59, 113, 5, 12], [31, 61, 127, 5, 14],
-    [37, 73, 149, 5, 15], [41, 83, 163, 6, 16], [43, 89, 173, 6, 17], [47, 97, 191, 6, 18], [53, 107, 211, 7, 20],
-    [59, 113, 239, 8, 22], [61, 127, 241, 9, 22], [67, 137, 269, 9, 24], [71, 139, 283, 9, 24], [73, 149, 293, 9, 25],
-    [79, 157, 317, 10, 28], [83, 167, 331, 10, 30], [89, 179, 359, 10, 31], [97, 193, 389, 11, 32], [101, 199, 401, 11, 33],
-  ];
-  const redSpeed = [1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 101, 103, 107, 109, 113, 127, 131];
-  const inversePeriod = 1 / 120000;
-  const [g1, g2, g3, min, max] = fireData[Math.max(0, Math.min(speed, fireData.length - 1))]!;
-  const red = () => redSpeed[min + Math.floor(Math.random() * (max - min + 1))]! * inversePeriod * (Math.random() < 0.5 ? -1 : 1);
+  const { up, side } = FIRE_NOISE[speed] ?? FIRE_NOISE[24]!;
+  const perMs = 1 / 120000;
+  const primes: number[] = [];
+  for (let n = side[0]; n <= side[1]; n++) if (isPrime(n)) primes.push(n);
+  const sideways = () => primes[Math.floor(Math.random() * primes.length)]! * perMs * (Math.random() < 0.5 ? -1 : 1);
   return [
-    [red(), -g1 * inversePeriod],
-    [red(), -g2 * inversePeriod],
-    [red(), -g3 * inversePeriod],
+    [sideways(), -up[0] * perMs],
+    [sideways(), -up[1] * perMs],
+    [sideways(), -up[2] * perMs],
   ];
 }
 
-/** C4's built-in particle texture (C4Particles.cpp): 16x16 luminance, a sharp peak. */
+/**
+ * The spark particle texture: 16x16 luminance with a sharp peak at (8, 8), falling off as
+ * 1 / (1 + 1.3 r^1.3) and faded to zero at r = 8.
+ */
 const PARTICLE_TEXTURE = (() => {
-  const img = [
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x03, 0x03, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x03, 0x05, 0x07, 0x08, 0x09, 0x08, 0x07, 0x05, 0x03, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x03, 0x06, 0x0a, 0x0d, 0x0f, 0x0f, 0x0f, 0x0d, 0x0a, 0x06, 0x03, 0x00, 0x00,
-    0x00, 0x00, 0x03, 0x06, 0x0b, 0x0f, 0x14, 0x18, 0x19, 0x18, 0x14, 0x0f, 0x0b, 0x06, 0x03, 0x00,
-    0x00, 0x01, 0x05, 0x0a, 0x0f, 0x16, 0x1e, 0x25, 0x27, 0x25, 0x1e, 0x16, 0x0f, 0x0a, 0x05, 0x01,
-    0x00, 0x02, 0x07, 0x0d, 0x14, 0x1e, 0x2b, 0x38, 0x3f, 0x38, 0x2b, 0x1e, 0x14, 0x0d, 0x07, 0x02,
-    0x00, 0x03, 0x08, 0x0f, 0x18, 0x25, 0x38, 0x56, 0x6f, 0x56, 0x38, 0x25, 0x18, 0x0f, 0x08, 0x03,
-    0x00, 0x03, 0x09, 0x0f, 0x19, 0x27, 0x3f, 0x6f, 0xff, 0x6f, 0x3f, 0x27, 0x19, 0x0f, 0x09, 0x03,
-    0x00, 0x03, 0x08, 0x0f, 0x18, 0x25, 0x38, 0x56, 0x6f, 0x56, 0x38, 0x25, 0x18, 0x0f, 0x08, 0x03,
-    0x00, 0x02, 0x07, 0x0d, 0x14, 0x1e, 0x2b, 0x38, 0x3f, 0x38, 0x2b, 0x1e, 0x14, 0x0d, 0x07, 0x02,
-    0x00, 0x01, 0x05, 0x0a, 0x0f, 0x16, 0x1e, 0x25, 0x27, 0x25, 0x1e, 0x16, 0x0f, 0x0a, 0x05, 0x01,
-    0x00, 0x00, 0x03, 0x06, 0x0b, 0x0f, 0x14, 0x18, 0x19, 0x18, 0x14, 0x0f, 0x0b, 0x06, 0x03, 0x00,
-    0x00, 0x00, 0x00, 0x03, 0x06, 0x0a, 0x0d, 0x0f, 0x0f, 0x0f, 0x0d, 0x0a, 0x06, 0x03, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x03, 0x05, 0x07, 0x08, 0x09, 0x08, 0x07, 0x05, 0x03, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x03, 0x03, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00,
-  ];
   const rgba = new Uint8Array(16 * 16 * 4);
-  img.forEach((l, i) => rgba.set([l, l, l, 255], i * 4));
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const r = Math.hypot(x - 8, y - 8);
+      const l = r >= 8 ? 0 : Math.round((255 / (1 + 1.3 * r ** 1.3)) * (1 - (r / 8) ** 2));
+      rgba.set([l, l, l, 255], (y * 16 + x) * 4);
+    }
+  }
   const t = new THREE.DataTexture(rgba, 16, 16);
   t.magFilter = t.minFilter = THREE.LinearFilter;
   t.needsUpdate = true;

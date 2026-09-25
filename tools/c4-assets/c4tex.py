@@ -1,5 +1,4 @@
-"""Decode C4 engine .tex files (TextureResourceHeader + TextureHeader + mipmaps) to PNG.
-Port of C4Textures.h structs and Image::DecompressImageRLE_RGBA32."""
+"""Decode C4 engine .tex files (resource header, texture header, mipmaps; RLE or DXT) to PNG."""
 import struct, sys, zlib
 
 def fourcc(v): return struct.pack('>I', v).decode('latin1')

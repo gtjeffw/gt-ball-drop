@@ -119,7 +119,8 @@ export const DEFAULT_CONFIG: ExperimentConfig = {
     speedMin: 0.001,
     spawnTimeIncrMs: 200,
     spawnTimeMinMs: 100,
-    targetAvg: 0.8,
+    // Lab decision (Sep 2026): the typical dual-task target, 85% ± 5%.
+    targetAvg: 0.85,
     targetAvgErr: 0.05,
     numTrials: 100,
     startWithPractice: true,

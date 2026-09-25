@@ -6,8 +6,10 @@ them. A ball that is missed drops into the fire pit below its lane. The task can
 its difficulty to each participant, runs a configurable number of blocks, and logs every
 event.
 
-It is typically the secondary task. The session can be run by the participant, by an
-experimenter from a second computer, or by the program that runs the primary task.
+It is typically the **primary** task: a continuous visual-motor task that stands in for
+driving, while the participant also performs a secondary task such as choosing items from
+an auditory menu. The session can be run by the participant, by an experimenter from a
+second computer, or by the program that runs the secondary task.
 
 (This is a new implementation of the earlier GT Ball Drop, built on the C4 engine. Old C4
 configuration files can be [converted](#converting-an-old-configuration).)
@@ -144,7 +146,7 @@ block or the whole experiment early:
 
 Commands can come from **the admin panel** (a person on a second computer, [3.1](#31-the-admin-panel)),
 or from **another program** through the **control API** ([3.2](#32-the-control-api)), e.g. the
-program running the primary task. Every command is logged with where it came from.
+experiment software running the secondary task. Every command is logged with where it came from.
 
 Two screens don't wait: calibration breaks continue by themselves after 2 s, and the
 *"Calibration complete"* screen can also be continued by the participant. The hidden **9**
@@ -209,7 +211,7 @@ Useful fields of `status`:
 | `participantId`, `sessionId`, `remoteControlled`, `tExp` | |
 
 **A driver script**, the typical sequence: calibration, then the blocks, each started by the
-primary task. Python, standard library only:
+secondary task's software. Python, standard library only:
 
 ```python
 import json, time, urllib.request
@@ -243,7 +245,7 @@ def continue_from(screen_id):
 continue_from("calibration-intro")          # start calibration
 continue_from("calibration-complete")
 for block in range(3):                      # numBlocks
-    # ... prepare the primary task for this block ...
+    # ... prepare the secondary task for this block ...
     continue_from("block-intro" if block == 0 else "block-break")   # start the block
     # the block ends by itself after numTrials balls, or: command("block-end")
 wait_for("complete")
@@ -265,7 +267,7 @@ var body = new StringContent("{\"command\":\"block-start\"}", Encoding.UTF8, "ap
 var reply = await (await http.PostAsync("/api/command", body)).Content.ReadAsStringAsync();
 ```
 
-To line up the two tasks' timing afterwards, record wall-clock time in the primary task.
+To line up the two tasks' timing afterwards, record wall-clock time in the other task's software.
 Every Ball Drop event has `tWall` (epoch ms, [section 5](#5-what-gets-recorded)).
 
 ---
@@ -291,8 +293,8 @@ into every session's folder, so each data set records how it was produced.
 | `calibration.enabled` | `false` | run calibration first |
 | `calibration.numTrials` | `100` | balls per calibration block |
 | `calibration.startWithPractice` | `true` | begin with one unscored practice block |
-| `calibration.targetAvg` | `0.8` | target catch rate |
-| `calibration.targetAvgErr` | `0.05` | tolerance: 0.75–0.85 counts as on target |
+| `calibration.targetAvg` | `0.85` | target catch rate |
+| `calibration.targetAvgErr` | `0.05` | tolerance: 0.80–0.90 counts as on target |
 | `calibration.spawnTimeIncrMs` | `200` | first step size for the drop interval |
 | `calibration.spawnTimeMinMs` | `100` | shortest drop interval allowed |
 | `calibration.speedIncr` | `0.003` | first step size for ball speed |
@@ -329,7 +331,9 @@ Each time a ball is due, the game first picks its lane:
 
 * **random:** any of the 7 lanes, with equal chance. `laneChangeStayChance` is ignored.
 * **lane:** stay in the current lane with probability `laneChangeStayChance`. Otherwise
-  move one lane left or right (50/50). At an edge the move is always inward.
+  move one lane left or right (50/50). At an edge the move is always inward. Each ball is
+  at most one lane from the last, so the paddle follows a drifting path: the lane-holding
+  pattern that makes the task a stand-in for keeping a car in its lane.
 * **neighborhood:** stay with probability `laneChangeStayChance`. Otherwise jump to one of
   the other lanes within `laneNeighborhoodSize`, with equal chance. With size 2 from
   lane 3, the candidates are 1, 2, 4 and 5 (plus 3 by staying). From lane 0 they are 1
