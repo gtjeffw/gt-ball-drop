@@ -65,7 +65,10 @@ lists the session with **Download** and **Discard** buttons.
 Limits compared with the desktop app:
 
 * The data exists only in that browser until it is downloaded. A private/incognito window,
-  or clearing the browser's site data, deletes it.
+  or clearing the browser's site data, deletes it. The setup screen says whether the
+  browser agreed to keep the site's storage persistent. If it didn't (Chrome decides by how
+  much the site is used; bookmarking or installing it helps), the browser may also clear
+  it when the disk runs low.
 * No kiosk: the page asks for full screen on **Start**, but the participant can leave it
   (**Esc**) and reach the rest of the computer. Supervise.
 * No remote control, admin panel or control API (`remoteControl` is always off).

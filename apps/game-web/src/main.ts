@@ -96,6 +96,11 @@ const flush = () => {
   if (pending.length) capture.record(pending.splice(0));
 };
 setInterval(flush, 100);
+// When the page is hidden or closed, save what's pending now rather than up to 100 ms later.
+addEventListener('pagehide', flush);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flush();
+});
 
 // Status for the admin display and the control API: small, local, and 4 Hz is plenty.
 setInterval(() => {
@@ -165,6 +170,9 @@ function showSetup(): void {
 }
 
 if (browserStore) {
+  // Ask the browser not to clear our storage when the disk runs low. It may answer later
+  // (Firefox asks the user), so the setup screen updates when it does.
+  void browserStore.persistStorage().then((granted) => setup.setStorage(granted));
   // Data a closed or crashed tab didn't get to download.
   const stored = await browserStore.stored();
   if (stored.length)

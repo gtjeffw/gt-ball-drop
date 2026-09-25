@@ -79,6 +79,10 @@ button.link { background: none; border: none; color: #2d4d7c; text-decoration: u
 .setup .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .setup .toolbar label { flex: 1; min-width: 260px; }
 .setup .toolbar select, .setup .toolbar button { font: inherit; }
+.setup .storage { font-size: 12px; margin: -6px 0 10px; }
+.setup .storage:empty { display: none; }
+.setup .ok-note { color: #1c7a2c; }
+.setup .warn-note { color: #8a5a00; }
 .setup .note { background: #fff8d0; border: 1px solid #d8c060; padding: 4px 8px; }
 .setup .sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 10px; }
 .setup fieldset { border: 1px solid #bbb; margin: 0; padding: 6px 10px 8px; }

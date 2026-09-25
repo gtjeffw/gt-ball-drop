@@ -73,6 +73,8 @@ export interface BrowserCapture extends Capture {
   stored(): Promise<StoredSession[]>;
   exportSession(sessionId: string): Promise<Download>;
   discard(sessionId: string): Promise<void>;
+  /** Ask for persistent storage, so the browser won't clear the data when the disk runs low. */
+  persistStorage(): Promise<boolean>;
 }
 
 export interface StoredSession {
@@ -150,6 +152,15 @@ export function browserCapture(store: OutboxStore = new IndexedDbOutboxStore('gt
       return out;
     },
     exportSession,
+    persistStorage: async () => {
+      const storage = globalThis.navigator?.storage;
+      if (!storage?.persist) return false;
+      try {
+        return (await storage.persisted()) || (await storage.persist());
+      } catch {
+        return false;
+      }
+    },
     discard: async (sessionId) => {
       await writes;
       await store.trim(sessionId, ALL);

@@ -98,6 +98,8 @@ export function forBrowserMode(c: ExperimentConfig): ExperimentConfig {
 export class SetupScreen {
   private draft: Record<string, unknown> = {};
   private appearanceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the browser agreed to keep our storage (null: no answer yet). */
+  private storagePersistent: boolean | null = null;
 
   constructor(
     private readonly el: HTMLElement,
@@ -107,6 +109,19 @@ export class SetupScreen {
       onAppearance(appearance: AppearanceConfig): void;
     },
   ) {}
+
+  setStorage(persistent: boolean): void {
+    this.storagePersistent = persistent;
+    const el = this.el.querySelector('.setup .storage');
+    if (el) el.outerHTML = this.storageLine();
+  }
+
+  private storageLine(): string {
+    if (this.storagePersistent === null) return '<p class="storage"></p>';
+    return this.storagePersistent
+      ? '<p class="storage ok-note">Browser storage is persistent: the browser won\'t clear stored sessions to free disk space.</p>'
+      : '<p class="storage warn-note">Browser storage is not persistent: if the disk runs low, the browser may clear sessions that haven\'t been downloaded. Download each session at the end.</p>';
+  }
 
   show(config: ExperimentConfig, note = ''): void {
     this.draft = structuredClone(config) as unknown as Record<string, unknown>;
@@ -149,6 +164,7 @@ export class SetupScreen {
         <div class="body">
           <p class="intro">Browser mode. Set up the session, then hand over to the participant. Data stays on this
           computer and is offered as a download at the end.</p>
+          ${this.storageLine()}
           <div class="toolbar">
             <label>Start from <select data-act="preset"><option value="">choose a preset…</option>${PRESETS.map(
               (p) => `<option value="${p.id}">${escapeHtml(p.label)}</option>`,

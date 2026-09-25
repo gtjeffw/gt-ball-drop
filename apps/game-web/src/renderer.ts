@@ -87,7 +87,10 @@ export class Renderer {
   private readonly ballMat: THREE.MeshPhongMaterial;
   private readonly balls = new Map<number, { mesh: THREE.Mesh; fires: FireEffect[] | null }>();
   private readonly pits: FireEffect[] = [];
+  /** Spark systems, reused: a finished one is hidden and waits for the next catch. */
   private readonly sparks: Sparks[] = [];
+  /** Shared by every spark system, so its shader stays compiled between catches. */
+  private readonly sparkMaterial = sparkMaterial();
   private readonly ballFlameTexture = c4Texture('texture/blue_flame.png');
   private readonly skybox: THREE.Mesh | null;
   private readonly modelShading: number;
@@ -338,9 +341,13 @@ export class Renderer {
     if (e.type === 'ball-caught') {
       // BallController::Catch puts a SparkSystem(100) at the ball's position.
       const at = this.balls.get(e.ballId)?.mesh.position.clone() ?? new THREE.Vector3(laneX(e.lane), GEOMETRY.laneY, GEOMETRY.catchZMax);
-      const s = new Sparks(at, e.tSys);
-      this.scene.add(s.mesh);
-      this.sparks.push(s);
+      let s = this.sparks.find((x) => !x.active);
+      if (!s) {
+        s = new Sparks(this.sparkMaterial);
+        this.scene.add(s.mesh);
+        this.sparks.push(s);
+      }
+      s.start(at, e.tSys);
     }
   }
 
@@ -404,14 +411,7 @@ export class Renderer {
 
     this.skybox?.position.copy(this.camera.position);
     for (const p of this.pits) p.update(this.camera, s.tSys);
-    for (let i = this.sparks.length - 1; i >= 0; i--) {
-      const sp = this.sparks[i]!;
-      if (!sp.update(s.tSys, this.camera)) {
-        this.scene.remove(sp.mesh);
-        sp.dispose();
-        this.sparks.splice(i, 1);
-      }
-    }
+    for (const sp of this.sparks) if (sp.active) sp.update(s.tSys, this.camera);
     this.renderer.render(this.scene, this.camera);
   }
 }
@@ -564,6 +564,35 @@ const PARTICLE_TEXTURE = (() => {
   return t;
 })();
 
+/** The spark streak material (C4 line particles: blue, SRC_ALPHA + ONE blending). */
+function sparkMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: { map: { value: PARTICLE_TEXTURE } },
+    vertexShader: /* glsl */ `
+      attribute float alpha;
+      varying float vAlpha;
+      varying vec2 vUv;
+      void main() {
+        vAlpha = alpha;
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      varying float vAlpha;
+      varying vec2 vUv;
+      void main() {
+        gl_FragColor = vec4(vec3(0.0, 0.0, 1.0) * texture2D(map, vUv).r, vAlpha);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneFactor,
+  });
+}
+
 /**
  * Port of GTBallDrop's SparkSystem (Effects.cpp) drawn as C4 line particles (C4Particles.cpp):
  * 100 blue particles, each living 0-749 ms, launched in a random direction at up to
@@ -577,73 +606,65 @@ class Sparks {
   private static readonly RADIUS = 0.25;
   private static readonly GRAVITY = -9.8e-6;
   private static readonly NORMALIZATION_MS = 16.666666;
-  private readonly pos: THREE.Vector3[] = [];
-  private readonly vel: THREE.Vector3[] = [];
-  private readonly life: number[] = [];
-  private lastT: number;
-  private readonly geo = new THREE.BufferGeometry();
+  // Scratch vectors for update(), which runs every frame for 100 particles.
+  private static readonly toCam = new THREE.Vector3();
+  private static readonly axis = new THREE.Vector3();
+  private static readonly side = new THREE.Vector3();
+  private static readonly along = new THREE.Vector3();
+  private static readonly tail = new THREE.Vector3();
+  private static readonly head = new THREE.Vector3();
+  private readonly pos = Array.from({ length: Sparks.COUNT }, () => new THREE.Vector3());
+  private readonly vel = Array.from({ length: Sparks.COUNT }, () => new THREE.Vector3());
+  private readonly life = new Float64Array(Sparks.COUNT);
+  private readonly posAttr: THREE.BufferAttribute;
+  private readonly alphaAttr: THREE.BufferAttribute;
+  private lastT = 0;
+  /** False once every particle has died: the system is hidden and free for reuse. */
+  active = false;
 
-  constructor(origin: THREE.Vector3, startedAt: number) {
+  constructor(material: THREE.ShaderMaterial) {
     const n = Sparks.COUNT;
-    for (let i = 0; i < n; i++) {
-      const phi = (Math.floor(Math.random() * 128) / 256) * 2 * Math.PI;
-      const theta = (Math.floor(Math.random() * 256) / 256) * 2 * Math.PI;
-      const speed = Math.random() * 0.04;
-      const sp = Math.sin(phi) * speed;
-      this.pos.push(origin.clone());
-      this.vel.push(new THREE.Vector3(Math.cos(theta) * sp, Math.sin(theta) * sp, Math.cos(phi) * speed));
-      this.life.push(Math.floor(Math.random() * 750));
-    }
-    this.lastT = startedAt;
-    this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 4 * 3), 3));
-    this.geo.setAttribute('alpha', new THREE.BufferAttribute(new Float32Array(n * 4), 1));
+    const geo = new THREE.BufferGeometry();
+    this.posAttr = new THREE.BufferAttribute(new Float32Array(n * 4 * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.alphaAttr = new THREE.BufferAttribute(new Float32Array(n * 4), 1).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position', this.posAttr);
+    geo.setAttribute('alpha', this.alphaAttr);
     const uv = new Float32Array(n * 8);
     const index: number[] = [];
     for (let i = 0; i < n; i++) {
       uv.set([0, 0, 1, 0, 1, 1, 0, 1], i * 8);
       index.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
     }
-    this.geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    this.geo.setIndex(index);
-    const material = new THREE.ShaderMaterial({
-      uniforms: { map: { value: PARTICLE_TEXTURE } },
-      vertexShader: /* glsl */ `
-        attribute float alpha;
-        varying float vAlpha;
-        varying vec2 vUv;
-        void main() {
-          vAlpha = alpha;
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }`,
-      fragmentShader: /* glsl */ `
-        uniform sampler2D map;
-        varying float vAlpha;
-        varying vec2 vUv;
-        void main() {
-          gl_FragColor = vec4(vec3(0.0, 0.0, 1.0) * texture2D(map, vUv).r, vAlpha);
-        }`,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.SrcAlphaFactor,
-      blendDst: THREE.OneFactor,
-    });
-    this.mesh = new THREE.Mesh(this.geo, material);
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(index);
+    this.mesh = new THREE.Mesh(geo, material);
     this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
   }
 
-  /** SparkSystem::AnimateParticles, then build the streaks. Returns false once every particle has died. */
-  update(tSys: number, camera: THREE.Camera): boolean {
+  /** SparkSystem's constructor: 100 particles from `origin` in random directions. */
+  start(origin: THREE.Vector3, startedAt: number): void {
+    for (let i = 0; i < Sparks.COUNT; i++) {
+      const phi = (Math.floor(Math.random() * 128) / 256) * 2 * Math.PI;
+      const theta = (Math.floor(Math.random() * 256) / 256) * 2 * Math.PI;
+      const speed = Math.random() * 0.04;
+      const sp = Math.sin(phi) * speed;
+      this.pos[i]!.copy(origin);
+      this.vel[i]!.set(Math.cos(theta) * sp, Math.sin(theta) * sp, Math.cos(phi) * speed);
+      this.life[i] = Math.floor(Math.random() * 750);
+    }
+    this.lastT = startedAt;
+    this.active = true;
+    this.mesh.visible = true;
+  }
+
+  /** SparkSystem::AnimateParticles, then build the streaks. Hides the system once every particle has died. */
+  update(tSys: number, camera: THREE.Camera): void {
     const dt = Math.max(0, tSys - this.lastT);
     this.lastT = tSys;
-    const posAttr = this.geo.getAttribute('position') as THREE.BufferAttribute;
-    const alphaAttr = this.geo.getAttribute('alpha') as THREE.BufferAttribute;
-    const toCam = new THREE.Vector3();
-    const axis = new THREE.Vector3();
-    const side = new THREE.Vector3();
-    const half = new THREE.Vector3();
+    const { toCam, axis, side, along, tail, head } = Sparks;
+    const posAttr = this.posAttr;
+    const alphaAttr = this.alphaAttr;
     let alive = 0;
     for (let i = 0; i < Sparks.COUNT; i++) {
       this.life[i]! -= dt;
@@ -657,14 +678,13 @@ class Sparks {
         a = life < 100 ? life * 0.01 : 1;
         alive++;
       }
-      half.copy(v).multiplyScalar(Sparks.NORMALIZATION_MS * 0.5);
       axis.copy(v).normalize();
       if (axis.lengthSq() === 0) axis.set(0, 0, 1);
       toCam.copy(camera.position).sub(p).normalize();
       side.crossVectors(axis, toCam).normalize().multiplyScalar(Sparks.RADIUS);
-      const along = axis.clone().multiplyScalar(Sparks.RADIUS).add(half);
-      const tail = p.clone().sub(along);
-      const head = p.clone().add(along);
+      along.copy(axis).multiplyScalar(Sparks.RADIUS).addScaledVector(v, Sparks.NORMALIZATION_MS * 0.5);
+      tail.copy(p).sub(along);
+      head.copy(p).add(along);
       posAttr.setXYZ(i * 4, tail.x - side.x, tail.y - side.y, tail.z - side.z);
       posAttr.setXYZ(i * 4 + 1, head.x - side.x, head.y - side.y, head.z - side.z);
       posAttr.setXYZ(i * 4 + 2, head.x + side.x, head.y + side.y, head.z + side.z);
@@ -673,11 +693,9 @@ class Sparks {
     }
     posAttr.needsUpdate = true;
     alphaAttr.needsUpdate = true;
-    return alive > 0;
-  }
-
-  dispose(): void {
-    this.geo.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    if (alive === 0) {
+      this.active = false;
+      this.mesh.visible = false;
+    }
   }
 }

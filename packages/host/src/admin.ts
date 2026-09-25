@@ -213,6 +213,12 @@ export class AdminHost implements ControlBackend {
           );
           this.opts.log(`Mirroring session ${msg.sessionId} -> ${sf.dir}`);
         }
+        // Only the announced session is mirrored: close the others (reopened from disk if announced again).
+        for (const [id, other] of this.mirrors) {
+          if (other === sf) continue;
+          other.close();
+          this.mirrors.delete(id);
+        }
         this.mirrors.set(msg.sessionId, sf);
         this.mirror = sf;
         void ch.send({ t: 'sync', sessionId: msg.sessionId, lastSeq: sf.lastSeq } satisfies PeerMessage);

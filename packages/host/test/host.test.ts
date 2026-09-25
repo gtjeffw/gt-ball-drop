@@ -117,7 +117,10 @@ describe('participant + admin hosts over a real LAN socket', () => {
     await game.waitFor((m) => m.t === 'cmd' && m.command === 'block-start');
 
     const clock = await game.waitFor((m) => m.t === 'clock-sync');
-    expect(Math.abs(clock.offsetMs)).toBeLessThan(50); // same machine
+    // Same machine, so the true offset is 0. The estimate t1 - (t0 + t2) / 2 is off by at most
+    // half the round trip (t1 lies between t0 and t2), plus 1 ms for millisecond clocks. A
+    // fixed limit fails under load, when the first ping's round trip stretches past 100 ms.
+    expect(Math.abs(clock.offsetMs)).toBeLessThanOrEqual(clock.rttMs / 2 + 1);
     expect(a.admin!.peerSummary.clock).not.toBeNull();
     expect(p.participant!.pairingCode).toBeNull();
   });
@@ -140,6 +143,32 @@ describe('participant + admin hosts over a real LAN socket', () => {
 
     adminUi.send({ t: 'connect', address }); // no code: uses the stored pairing
     await adminUi.waitFor((m) => m.t === 'mirror' && m.mirror.lastSeq === events.at(-1)!.seq, 5000);
+  });
+
+  it('keeps only the current session open; late events for an earlier one still land in its files', async () => {
+    const { game } = await setup();
+    const open = async (sessionId: string) => {
+      game.send({ t: 'session.open', sessionId, participantId: 'P9', version: 'test', startedAt: new Date().toISOString(), config: DEFAULT_CONFIG });
+      return (await game.waitFor((m) => m.t === 'session.opened' && m.sessionId === sessionId)).logDir as string;
+    };
+    const acked = (sessionId: string, seq: number) => game.waitFor((m) => m.t === 'ack' && m.sessionId === sessionId && m.seq === seq);
+    const a = generateEvents('late-a');
+    const b = generateEvents('late-b');
+
+    const dirA = await open('late-a');
+    game.send({ t: 'events', sessionId: 'late-a', events: a.slice(0, 10) });
+    await acked('late-a', 9);
+    const dirB = await open('late-b'); // closes late-a
+    game.send({ t: 'events', sessionId: 'late-b', events: b.slice(0, 10) });
+    await acked('late-b', 9);
+    game.send({ t: 'events', sessionId: 'late-a', events: a.slice(5) }); // overlaps what's stored: deduplicated
+    await acked('late-a', a.at(-1)!.seq);
+    game.send({ t: 'events', sessionId: 'late-b', events: b.slice(10) });
+    await acked('late-b', b.at(-1)!.seq);
+
+    const seqs = (dir: string) => fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).seq);
+    expect(seqs(dirA)).toEqual(a.map((e) => e.seq));
+    expect(seqs(dirB)).toEqual(b.map((e) => e.seq));
   });
 
   it('accepts sessions recorded by an older app version (config missing newer fields)', async () => {

@@ -272,6 +272,13 @@ export class ParticipantHost implements ControlBackend {
   private setCurrent(sf: SessionFiles): void {
     if (this.current === sf) return;
     this.current = sf;
+    // Only the current session stays open (files and cached events). Late events for an
+    // earlier one reopen it from disk.
+    for (const [id, other] of this.sessions) {
+      if (other === sf) continue;
+      other.close();
+      this.sessions.delete(id);
+    }
     for (const p of this.peers) {
       p.syncedSession = null;
       p.cursor = null;
