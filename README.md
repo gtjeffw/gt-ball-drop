@@ -79,6 +79,8 @@ npm run desktop           # the desktop app (participant); npm run desktop:admin
 data files, the control API). **Browser mode** (static site for supervised sessions, e.g.
 on Cloudflare Pages): see [docs/DEPLOY.md](docs/DEPLOY.md). **Design and extension
 points** (cloud sink, relay, PAKE): see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Maintainers:** the code lives in two repositories, on github.gatech.edu and github.com;
+see [docs/REPOSITORIES.md](docs/REPOSITORIES.md) for keeping them in step.
 
 Node 22 (`.nvmrc`).
 

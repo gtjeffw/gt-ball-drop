@@ -34,5 +34,8 @@ self-hosted GitHub such as github.gatech.edu. To deploy from a self-hosted repos
 build in its CI instead and upload with Wrangler (`npx wrangler pages deploy
 apps/game-web/dist-browser --project-name=…`, with a Cloudflare API token as a CI secret).
 
+This project's site is built from the github.com copy of the repository, so changes reach
+the site when they're pushed there ([REPOSITORIES.md](REPOSITORIES.md)).
+
 Session data is kept in the browser's storage for the site's origin. Moving the site to a
 new domain starts with empty storage, so download any stored sessions first.
