@@ -73,7 +73,7 @@ button.link { background: none; border: none; color: #2d4d7c; text-decoration: u
 .stored button { font: inherit; font-size: 12px; }
 
 /* Browser mode's setup screen. */
-.window.setup { width: min(860px, 96vw); max-height: 94vh; display: flex; flex-direction: column; }
+.window.setup { width: min(1060px, 96vw); max-height: 94vh; display: flex; flex-direction: column; }
 .window.setup .body { overflow-y: auto; font-size: 13px; }
 .setup .intro { color: #333; }
 .setup .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
@@ -84,12 +84,35 @@ button.link { background: none; border: none; color: #2d4d7c; text-decoration: u
 .setup .ok-note { color: #1c7a2c; }
 .setup .warn-note { color: #8a5a00; }
 .setup .note { background: #fff8d0; border: 1px solid #d8c060; padding: 4px 8px; }
-.setup .sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 10px; }
-.setup fieldset { border: 1px solid #bbb; margin: 0; padding: 6px 10px 8px; }
+/* Columns rather than a grid, so a short section doesn't stretch to the height of a tall one beside it. */
+.setup .sections { columns: 2 420px; column-gap: 12px; }
+.setup fieldset { border: 1px solid #bbb; margin: 0 0 10px; padding: 6px 10px 8px; break-inside: avoid; }
 .setup legend { font-weight: bold; color: #2d4d7c; }
-.setup label.field { display: grid; grid-template-columns: 1fr 120px; gap: 2px 8px; margin: 4px 0; }
+.setup label.field { display: grid; grid-template-columns: 1fr minmax(170px, 50%); gap: 2px 8px; margin: 4px 0; }
 .setup label.field input[type='checkbox'] { justify-self: start; flex: none; }
 .setup label.field select, .setup label.field input { font: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
 .setup label.field em { grid-column: 1 / -1; font-style: normal; font-size: 11px; color: #666; text-align: right; }
 .setup label.field.invalid input { outline: 2px solid #b3261e; }
 .setup label.field em.err { color: #b3261e; }
+
+/* Controller panel: on the setup screen and in the start screen's Experimenter panel. */
+.controller { font-size: 12px; }
+.experimenter .controller { margin-top: 8px; border-top: 1px dotted #bbb; padding-top: 6px; }
+.controller .ctl-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.controller .ctl-row > span:first-child { width: 48px; color: #333; }
+.controller select { font: inherit; min-width: 0; flex: 1; max-width: 100%; }
+.controller button { font: inherit; }
+.controller label.ctl-check { display: inline-flex; gap: 4px; }
+.controller label.ctl-check input { flex: none; }
+.controller p { margin: 4px 0; line-height: 1.35; }
+.controller .ctl-hint, .controller .ctl-status { color: #555; }
+.controller .ctl-mode span { color: #666; }
+.controller .ctl-error { color: #b3261e; }
+.controller .ctl-range { min-width: 90px; }
+.warn-box { background: #fff1dc; border: 1px solid #d0892c; border-left: 4px solid #d0892c; color: #5a3300; padding: 4px 8px; }
+.controller .ctl-track { position: relative; height: 16px; margin: 6px 0 2px; border: 1px solid #888; background: #fff; }
+.controller .ctl-zones { margin: 0; display: flex; height: 100%; }
+.controller .ctl-zones i { flex: 1; border-right: 1px solid #ccc; }
+.controller .ctl-zones i:last-child { border-right: none; }
+.controller .ctl-zones i.lit { background: #9cc3f0; }
+.controller .ctl-marker { position: absolute; top: -3px; bottom: -3px; width: 3px; margin: 0 0 0 -1px; background: #b3261e; }

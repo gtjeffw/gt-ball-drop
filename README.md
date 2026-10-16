@@ -4,7 +4,7 @@ A ball-catching task for dual-task user studies, originally developed for Dr. Br
 [Sonification Lab](https://sonify.psych.gatech.edu) at the Georgia Institute of Technology.
 
 Blue balls fall down seven lanes, and the participant moves a paddle left and right with
-the keyboard to catch them. In a typical study, catching balls is the participant's
+the keyboard, or a joystick or steering wheel, to catch them. In a typical study, catching balls is the participant's
 **primary task** while they also perform a **secondary task**, such as finding an item in
 an auditory menu. Ball catching is a continuous visual-motor task that can stand in for an
 activity like driving. That is especially true in **lane mode**, where each ball falls in
@@ -63,6 +63,9 @@ matches, what was measured or approximated, and every deliberate change.
   encrypted, mutually authenticated channel.
 * **Control API:** another program on the participant machine (such as the secondary
   task's software) can start and end blocks and follow events live.
+* **Input:** the keyboard, or a joystick, gamepad or steering wheel read report by report
+  through WebHID (with the Gamepad API as a fallback), moving the paddle a lane per push
+  or following the axis.
 * **Deployment:** an Electron app (participant = kiosk, admin = window), or run the host
   and use any Chromium browser. Or **browser mode**: a static website with a setup
   screen, for sessions with the experimenter in the room, and a .zip download at the end.

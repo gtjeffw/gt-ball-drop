@@ -36,6 +36,8 @@ export interface StartScreenInfo {
   pairingCode: string | null;
   adminLinks: string[];
   remoteControlled: boolean;
+  /** The connected controller's name, if any. */
+  controller: string | null;
 }
 
 /** DOM dialogs over the 3D view, in the style of the C4 GameWindow. */
@@ -53,6 +55,8 @@ export class Screens {
       onNewPairingCode(): void;
       /** Browser mode: back from the participant screen to the setup screen. */
       onSettings?(): void;
+      /** Draw the controller panel (for the experimenter) into `el`. */
+      mountController(el: HTMLElement): void;
     },
   ) {
     this.el = root;
@@ -83,14 +87,16 @@ export class Screens {
             <input id="pid" autocomplete="off" spellcheck="false" maxlength="64" value="${escapeHtml(info.defaultParticipantId)}" />
           </label>
           <div class="buttons">${browser ? '<button type="button" data-act="settings">Settings</button>' : '<button type="button" data-act="quit">Quit</button>'}<button type="submit">Start</button></div>
-          <p class="keys">Catch the balls with <b>←</b> <b>→</b> (or <b>A</b> <b>D</b>).</p>
+          <p class="keys">Catch the balls with <b>←</b> <b>→</b> (or <b>A</b> <b>D</b>)${info.controller ? `, or the ${escapeHtml(info.controller)}` : ''}.</p>
         </form>
         <details class="experimenter"><summary>Experimenter</summary>
           <div>${hostLine}</div>${pairing}${admins}
           ${browser ? '' : `<div>Remote control: ${info.remoteControlled ? 'on (breaks wait for the admin panel or control program)' : 'off'}</div>`}
+          <div class="controller-slot"></div>
         </details>
       </div>`;
     this.el.hidden = false;
+    this.handlers.mountController(this.el.querySelector('.controller-slot')!);
     const input = this.el.querySelector<HTMLInputElement>('#pid')!;
     input.focus();
     input.select();

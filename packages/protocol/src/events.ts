@@ -44,10 +44,14 @@ export type DomainEvent = { tExp: number; tSys: number } & (
   | { type: 'experiment-aborted'; reason: string }
   | { type: 'ball-spawned'; ballId: number; lane: number; speed: number }
   | { type: 'ball-caught'; ballId: number; lane: number; catcherX: number; count: number }
-  | { type: 'ball-missed'; ballId: number; lane: number; catcherLane: number; count: number }
+  | { type: 'ball-missed'; ballId: number; lane: number; catcherLane: number; catcherX: number; count: number }
   | { type: 'ball-removed'; ballId: number }
   /** `legacyColumn` is null when the original would not have logged the move (at the edge). */
-  | { type: 'catcher-moved'; direction: 'left' | 'right'; lane: number; legacyColumn: number | null }
+  | { type: 'catcher-moved'; direction: 'left' | 'right'; lane: number; legacyColumn: number | null; input: MoveInput }
+  /** A joystick or wheel was in use when the session started, connected, or disconnected. */
+  | ({ type: 'controller'; status: 'connected' | 'disconnected' } & ControllerInfo)
+  /** The controller axis moved: `value` is −1 (left) to 1 (right) after range and invert; `raw` is as the device reported it. */
+  | { type: 'controller-axis'; value: number; raw: number }
   | { type: 'screen-shown'; screen: ScreenId; interactive: boolean }
   | { type: 'screen-dismissed'; screen: ScreenId; by: ContinueSource }
   /** `source` says who sent it, e.g. 'admin-panel@a-1234', 'control-api@a-1234', 'control-api@local'. */
@@ -55,6 +59,26 @@ export type DomainEvent = { tExp: number; tSys: number } & (
   | { type: 'admin-link'; status: 'connected' | 'lost'; peerId: string }
   | { type: 'clock-sync'; peerId: string; offsetMs: number; rttMs: number }
 );
+
+export type MoveInput = 'keyboard' | 'controller';
+
+/**
+ * A joystick or wheel, as recorded with a session. `api` says how it was read:
+ *  - 'webhid': every report the device sends, each with its own timestamp
+ *  - 'gamepad': the Gamepad API, polled, so moves are timed to the poll and a very quick
+ *    movement between two polls can be missed
+ */
+export interface ControllerInfo {
+  api: 'webhid' | 'gamepad';
+  name: string;
+  vendorId: number | null;
+  productId: number | null;
+  /** Which axis, e.g. 'X' or 'Steering' (WebHID) or 'Axis 0' (Gamepad API). */
+  axis: string;
+  invert: boolean;
+  /** Raw values that map to −1 and 1; null = the device's full range. */
+  range: { min: number; max: number } | null;
+}
 
 export type DomainEventType = DomainEvent['type'];
 export type EventOf<T extends DomainEventType> = Extract<DomainEvent, { type: T }>;

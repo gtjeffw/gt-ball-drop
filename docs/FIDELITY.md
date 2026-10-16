@@ -108,6 +108,7 @@ Checked against the C++ and the C4 engine source.
 | Catcher extras | the "base spin" and tilt code targets a subnode this model doesn't have; mouse-look values are computed but never used | none | same (no visible effect in either) |
 | Keys | Left/Right and A/D, one lane per press, auto-repeat ignored | same | same |
 | Input timing | polled once per frame; a press and release inside one frame could be lost | each key is applied at its own event timestamp (≤ 1 ms) and never lost | **better**, deliberately |
+| Controllers | keyboard only | optionally a joystick or wheel axis: as steps (like the keys), or by position, either springing to the lane the axis points at or following it continuously with no spring (the paddle can then stop between lanes). Lane changes are logged as the same `BALL_CATCHER_*` lines | **added**: keyboard behaviour is unchanged; `catcher-moved` records the input |
 | World clock | whole-millisecond ticks with a carried remainder; a frame's delta capped at 250 ms | 1 ms steps; a call is capped at 5 s | same in normal running |
 | Spawn interval | a spawn is due at `last + spawnTime`, but is checked only once per frame, and `last` is set to that frame's time, so each interval is rounded up to a frame boundary (about +8 ms on average at 60 fps) | exact to the millisecond | **differs slightly**: about 1% at 750 ms, up to about 8% at the 100 ms minimum. Frame-rate dependent in the original, so it isn't emulated |
 | Ball fall | constant speed × dt, spin 1°/ms | same | same. The spin is invisible, because the ball has no texture |

@@ -51,7 +51,9 @@ where the experimenter sets up the computer and then hands it to the participant
    grouped and checked as you type. Start from a preset (presets set the session and
    timing, and leave the look alone), or **Load config.json…** to use a lab config file.
    **Save config.json** writes the current settings to a file. The browser remembers the
-   last settings used, and **Reset to defaults** goes back to the lab defaults.
+   last settings used, and **Reset to defaults** goes back to the lab defaults. A joystick
+   or steering wheel is set up in the **Controller** section (see
+   [Joysticks and steering wheels](#joysticks-and-steering-wheels)).
 2. **Continue to participant screen**, then hand over. The participant screen is the usual
    start screen. **Settings** (or **Esc**) goes back to the setup screen.
 3. At the end, after *"Experiment complete!"* and **Quit**: **Download session data
@@ -128,6 +130,75 @@ the new lane with a damped spring: about 90% of the way in 0.2 s, settled in abo
 
 While a screen is showing, the game is paused. Experiment time stops, balls freeze, and
 paddle moves are ignored.
+
+### Joysticks and steering wheels
+
+A USB joystick, gamepad or simple steering wheel can move the paddle with one of its axes.
+The keyboard keeps working alongside it, except in position mode (below).
+
+**Setting it up (experimenter).** In browser mode, use the **Controller** section of the
+setup screen. In the desktop app, and on any start screen, open **Experimenter**. Then:
+
+1. **Device:** click **Connect a controller…** and pick it. Chrome and Edge show their own
+   device chooser, and the desktop app shows a dialog if more than one controller is
+   plugged in. A device listed as *Gamepad API, polled* appears after you press one of its
+   buttons.
+2. **Axis:** click **Detect** and turn the wheel or push the stick. Or pick the axis from
+   the list (on a wheel it is usually *X* or *Steering*). Tick **Invert** if right moves
+   the paddle left.
+3. **Range:** the device's physical extents, by default the limits it reports itself. Only
+   if the stick or wheel doesn't reach those (the meter stops short of the ends at full
+   throw) or doesn't centre on them, click **Calibrate…**, move it as far as it goes to
+   both sides, and click **Done**. **Use reported** undoes it. How much of the range a
+   participant has to use is the experiment's reach (below), not this.
+
+The meter under the settings shows the axis live, with the lanes (position mode) or push
+bands (step mode) it would trigger. The computer remembers the device, axis, invert and
+range, and reconnects to the device next time. Every session records them (the
+`controller` event).
+
+**How the axis moves the paddle** (`controller.mapping` in [Configuration](#4-configuration)).
+In browser mode these settings are in the setup screen's **Controller** section. The desktop
+app has no setup screen, so they are in its `config.json`. Either way, the **Mode** line at
+the top of the Experimenter panel says which mode is in use.
+
+* **Steps** (`"step"`, the default): like the arrow keys. Pushing past
+  `controller.stepThreshold` of full travel moves one lane; the axis has to come back
+  inside `controller.stepRelease` before the next push. Holding doesn't repeat.
+* **Position** (`"position"`): the axis position sets the paddle's. Full left is the
+  leftmost lane, the centre is the middle lane, and full right is the rightmost lane. How
+  the paddle gets there is set by `controller.positionMotion`:
+  * **Continuously** (`"continuous"`, the default): the paddle follows the axis exactly,
+    with no spring. It can stop between lanes, and a ball is caught only when the
+    paddle's centre is within 0.75 of the ball's (lanes are 2 apart), so this asks for
+    more precision than the keys. The log records a paddle move each time the paddle
+    passes the midpoint to another lane by a tenth of the spacing.
+  * **In lanes** (`"lanes"`): the travel is split into seven equal zones, and the paddle
+    springs to the lane the axis points at, one lane at a time, like a series of key
+    presses. It changes lane only once the axis is `controller.positionHysteresis` of a
+    zone past the edge, so a hand resting on a boundary doesn't make it jitter.
+
+  `controller.positionReach` sets how much of the axis's travel spans the lanes. At `1`
+  the full throw does. At `0.7`, 70% of the way to either side already reaches the outer
+  lane, and anything beyond keeps the paddle there, for participants who find the full
+  throw hard to reach, or on a wheel that turns 900°. Unlike the device's range, which is
+  calibrated per computer, this is part of the config: the same on every machine, and
+  recorded with each session.
+
+  At the start of each block, after the paddle is reset to the middle, it goes straight to
+  where the controller points. The arrow keys don't move the paddle while a controller is
+  connected in this mode. A thumbstick springs back to the centre, so in this mode letting
+  go of it brings the paddle back to the middle.
+
+**Timing.** Chrome, Edge and the desktop app read the controller through **WebHID**: every
+report the device sends (often 125–1000 a second) arrives as its own event, and each
+move is applied at the time the page received that report, as with key presses. Other
+browsers, and devices WebHID can't see, fall back
+to the **Gamepad API**, which the page has to poll. It does that every 4 ms, so moves are
+timed only to within about 4–16 ms and a very quick flick between two polls is missed. The
+setup screen warns when this fallback is in use, and the session's `controller` event says
+which one was used (`api`). Report timestamps are taken when the page receives each
+report, so a page busy drawing can delay them slightly. The meter shows the report rate.
 
 ---
 
@@ -304,6 +375,12 @@ into every session's folder, so each data set records how it was produced.
 | `remoteControl.enabled` | `false` | break screens wait for the admin panel or a program ([section 3](#3-remote-control-an-experimenter-or-another-program)) |
 | `remoteControl.infiniteTrials` | `false` | blocks end only on `block-end` (`numTrials` ignored) |
 | `remoteControl.infiniteBlocks` | `false` | the experiment ends only on `quit` (`numBlocks` ignored) |
+| `controller.mapping` | `"step"` | how a joystick or wheel axis moves the paddle: `"step"` (one lane per push) or `"position"` (the angle picks the lane). See [Joysticks and steering wheels](#joysticks-and-steering-wheels) |
+| `controller.stepThreshold` | `0.5` | step mode: fraction of full travel that counts as a push |
+| `controller.stepRelease` | `0.3` | step mode: back inside this fraction re-arms the next push (less than `stepThreshold`) |
+| `controller.positionMotion` | `"continuous"` | position mode: `"continuous"` (the paddle follows the axis exactly, no spring) or `"lanes"` (it springs to the lane the axis points at) |
+| `controller.positionReach` | `1` | position mode: fraction of full travel (0.2–1) that reaches the outer lanes; beyond it the paddle stays at the edge |
+| `controller.positionHysteresis` | `0.2` | position mode in lanes: how far into the next lane's zone (fraction of a zone, 0–0.5) the axis must go before the paddle moves |
 | `appearance.world` | `"classic"` | `"classic"`: cloudy sky and yellow flames. `"clean"`: pale-yellow background and red flames. Visual only |
 | `appearance.flameHeightScale` | `0.5` | fire-pit flame height (1 = full height, which rises above the paddle) |
 | `appearance.flameOpacity` | `0.7` | fire-pit flame brightness (0–1) |
@@ -427,8 +504,13 @@ Each line is `{"schema":1,"sessionId":…,"seq":n,"tWall":epochMs,"event":{…}}
 counts up from 0 with no gaps. `event.type` is one of:
 * `session-started` (full config, random seed)
 * `calibration-*`, `block-started`/`block-ended`
-* `ball-spawned` (lane, speed), `ball-caught`/`ball-missed` (lane, paddle position), `ball-removed`
-* `catcher-moved` (every press, including presses at an edge)
+* `ball-spawned` (lane, speed), `ball-caught`/`ball-missed` (lane, paddle x; misses also give the paddle's lane), `ball-removed`
+* `catcher-moved` (every press, including presses at an edge; `input` is `keyboard` or
+  `controller`. With continuous control, one per lane the paddle passes into)
+* `controller` (a joystick or wheel in use at the start, connected or disconnected: `api`
+  `webhid` or `gamepad`, name, USB vendor and product IDs, axis, invert, range)
+* `controller-axis` (the axis moved: `value` −1 to 1 after range and invert, and `raw` as
+  the device reported it; changes under 0.005 aren't logged)
 * `screen-shown`/`screen-dismissed` (and who dismissed it)
 * `remote-command` (command, accepted, and its `source`: `admin-panel@…` or `control-api@…`)
 * `admin-link`, `clock-sync` (the offset to an admin machine's clock)
@@ -473,6 +555,12 @@ forget all pairings.
 | `POST /api/command` returns 415 | Send the header `Content-Type: application/json` |
 | A setting has no effect | Edit `config.json` while the app is closed, then restart it |
 | Participant stuck on a screen with no buttons | Remote control is on. Use the admin panel or the control API, or press **9** |
+| Controller not listed | Click **Connect a controller…** (Chrome, Edge, desktop app), or press one of its buttons so the browser lists it through the Gamepad API. A wireless controller may have gone to sleep: wake it (on a PlayStation controller, the PS button) |
+| *"This browser didn't show a device chooser"* | The browser has WebHID but can't ask which device to use (some browsers built into other apps). Use Chrome, Edge or the desktop app, or press a button on the controller to use the Gamepad API |
+| Low report rate on the meter (e.g. 50 a second) | The rate is the controller's own. A wireless controller can report less often over Bluetooth than over a USB data cable. Check the rate before each session |
+| Controller moves the paddle the wrong way | Tick **Invert** |
+| Wheel or stick needs too much movement | Lower `controller.positionReach` (setup screen: **Outer lanes reached at**) |
+| The meter doesn't reach the ends at full throw | **Calibrate…** the range: move the control as far as it goes both ways |
 
 ---
 

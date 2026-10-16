@@ -122,6 +122,49 @@ describe('Experiment: blocks without calibration', () => {
     expect(ofType(events, 'catcher-moved')).toHaveLength(5); // the attempt at the edge is still recorded
   });
 
+  it('records which input moved the paddle, and controller events with their timing', () => {
+    const { exp, events } = make(cfg);
+    exp.start();
+    exp.dispatch({ type: 'continue', source: 'participant' });
+    const info = { api: 'webhid', name: 'Wheel', vendorId: 0x046d, productId: 0xc24f, axis: 'X', invert: false, range: null } as const;
+    exp.dispatch({ type: 'controller', status: 'connected', ...info });
+    exp.advance(10);
+    exp.dispatch({ type: 'controller-axis', value: 0.6, raw: 52000 });
+    exp.dispatch({ type: 'move', direction: 'right', input: 'controller' });
+    exp.dispatch({ type: 'move', direction: 'left' });
+    expect(ofType(events, 'catcher-moved').map((e) => e.input)).toEqual(['controller', 'keyboard']);
+    expect(ofType(events, 'controller')).toEqual([{ type: 'controller', status: 'connected', ...info, tExp: 0, tSys: 0 }]);
+    expect(ofType(events, 'controller-axis')).toEqual([{ type: 'controller-axis', value: 0.6, raw: 52000, tExp: 10, tSys: 10 }]);
+    // Controller moves are logged the same way in the legacy log.
+    expect(tokens(events).filter((t) => t.startsWith('BALL_CATCHER'))).toEqual(['BALL_CATCHER_RIGHT,-1', 'BALL_CATCHER_LEFT,0']);
+  });
+
+  it('continuous placement: no spring, a logged move per lane crossed, catches only near a lane', () => {
+    const { exp, events } = make({ ...cfg, numTrials: 50, ballSpawnTimeMs: 100, dropMode: 'random' });
+    exp.start();
+    exp.dispatch({ type: 'continue', source: 'participant' });
+    const place = (x: number) => exp.dispatch({ type: 'place', x, input: 'controller' });
+
+    place(1.7); // past lane 3 (x 0) by 0.85 of the spacing: lane 4 (x 2)
+    exp.advance(500);
+    expect(exp.snapshot().catcherX).toBe(1.7); // the spring doesn't pull it to x 2
+    expect(exp.status().catcherLane).toBe(4);
+    place(-4.1); // lanes 3, 2, 1 crossed: x -4 is lane 1
+    expect(exp.status().catcherLane).toBe(1);
+    place(-3.0); // exactly between lanes 1 and 2: within the margin, still lane 1
+    expect(exp.status().catcherLane).toBe(1);
+    place(99); // clamped to the rightmost lane
+    expect(exp.snapshot().catcherX).toBe(6);
+    expect(ofType(events, 'catcher-moved').map((e) => `${e.direction}${e.lane}`)).toEqual(['right4', 'left3', 'left2', 'left1', 'right2', 'right3', 'right4', 'right5', 'right6']);
+
+    // Parked between lanes 5 and 6 (x 3): further than catchHalfWidth from both, so every ball is missed.
+    place(3);
+    run(exp, (e) => e.dispatch({ type: 'place', x: 3, input: 'controller' }), 30_000);
+    const ended = ofType(events, 'block-ended')[0]!;
+    expect([ended.caught, ended.missed]).toEqual([0, 50]);
+    expect(ofType(events, 'ball-missed').every((e) => e.catcherX === 3)).toBe(true);
+  });
+
   it('is deterministic for a given seed', () => {
     const go = (seed: number) => {
       const { exp, events } = make({ ...cfg, numTrials: 10 }, seed);

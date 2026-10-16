@@ -32,7 +32,7 @@ packages/
              node/SessionFiles (session dir on disk, idempotent, fsynced)
   host       Node host: static UI + /ui link + /peer link. ParticipantHost, AdminHost.
 apps/
-  game-web   Three.js renderer, DOM dialogs, keyboard input, HostLink, Capture
+  game-web   Three.js renderer, DOM dialogs, keyboard and controller input, HostLink, Capture
              (host | browser), browser-mode setup screen
   admin-web  Admin panel (browser)
   desktop    Electron shell: embeds the host, kiosk window, role = participant | admin

@@ -1,4 +1,12 @@
-import { DEFAULT_CONFIG, ExperimentConfigSchema, resolveConfig, type AppearanceConfig, type ExperimentConfig } from '@gtbd/protocol';
+import {
+  ControllerConfigSchema,
+  DEFAULT_CONFIG,
+  ExperimentConfigSchema,
+  resolveConfig,
+  type AppearanceConfig,
+  type ControllerConfig,
+  type ExperimentConfig,
+} from '@gtbd/protocol';
 import { PRESETS } from './presets';
 
 /**
@@ -20,7 +28,8 @@ interface Field {
 
 const calibrating = (c: ExperimentConfig) => c.calibration.enabled;
 
-const SECTIONS: { title: string; fields: Field[] }[] = [
+/** `controller`: the section also holds the device panel (this computer's controller). */
+const SECTIONS: { title: string; fields: Field[]; controller?: true }[] = [
   {
     title: 'Session',
     fields: [
@@ -72,6 +81,48 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
     ],
   },
   {
+    title: 'Controller (joystick or wheel)',
+    controller: true,
+    fields: [
+      {
+        path: 'controller.mapping',
+        label: 'The axis moves the paddle',
+        kind: { options: [['step', 'In steps'], ['position', 'By position']] },
+        hint: (c) =>
+          c.controller.mapping === 'position'
+            ? 'the angle picks the lane; the arrow keys don\'t move the paddle while a controller is connected'
+            : 'one lane per push, like the arrow keys',
+      },
+      {
+        path: 'controller.positionMotion',
+        label: 'The paddle moves',
+        kind: { options: [['continuous', 'Continuously'], ['lanes', 'In lanes']] },
+        hint: (c) =>
+          c.controller.positionMotion === 'continuous'
+            ? 'follows the axis exactly and can stop between lanes, where it catches nothing'
+            : 'springs to the lane the axis points at',
+        when: (c) => c.controller.mapping === 'position',
+      },
+      {
+        path: 'controller.positionReach',
+        label: 'Outer lanes reached at (0.2–1 of full)',
+        kind: 'number',
+        step: 0.05,
+        hint: (c) => (c.controller.positionReach < 1 ? 'beyond it the paddle stays at the outer lane' : 'the full travel spans the lanes'),
+        when: (c) => c.controller.mapping === 'position',
+      },
+      { path: 'controller.stepThreshold', label: 'Push past (0–1 of full)', kind: 'number', step: 0.05, when: (c) => c.controller.mapping === 'step' },
+      { path: 'controller.stepRelease', label: 'Re-arm inside (0–1 of full)', kind: 'number', step: 0.05, when: (c) => c.controller.mapping === 'step' },
+      {
+        path: 'controller.positionHysteresis',
+        label: 'Lane-change margin (0–0.5 of a lane)',
+        kind: 'number',
+        step: 0.05,
+        when: (c) => c.controller.mapping === 'position' && c.controller.positionMotion === 'lanes',
+      },
+    ],
+  },
+  {
     title: 'Advanced',
     fields: [{ path: 'seed', label: 'Random seed (blank = new each session)', kind: 'optional-int' }],
   },
@@ -107,6 +158,8 @@ export class SetupScreen {
       onContinue(config: ExperimentConfig): void;
       /** The look changed: redraw the scene behind the form. */
       onAppearance(appearance: AppearanceConfig): void;
+      /** Draw the controller panel into `el`, previewing `mapping`. */
+      mountController(el: HTMLElement, mapping: () => ControllerConfig | null): void;
     },
   ) {}
 
@@ -176,12 +229,16 @@ export class SetupScreen {
           </div>
           ${note ? `<p class="note">${escapeHtml(note)}</p>` : ''}
           <div class="sections">${SECTIONS.map(
-            (s) => `<fieldset><legend>${s.title}</legend>${s.fields.map(field).join('')}</fieldset>`,
+            (s) => `<fieldset><legend>${s.title}</legend>${s.controller ? '<div class="controller-slot"></div>' : ''}${s.fields.map(field).join('')}</fieldset>`,
           ).join('')}</div>
           <div class="buttons"><button type="button" data-act="continue"${parsed.success ? '' : ' disabled'}>Continue to participant screen</button></div>
         </div>
       </div>`;
     this.el.hidden = false;
+    this.handlers.mountController(this.el.querySelector('.controller-slot')!, () => {
+      const c = ControllerConfigSchema.safeParse(this.draft.controller);
+      return c.success ? c.data : null;
+    });
 
     for (const input of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-path]')) {
       input.addEventListener(input.type === 'checkbox' || input.tagName === 'SELECT' ? 'change' : 'input', () => this.onField(input));

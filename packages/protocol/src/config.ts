@@ -63,6 +63,46 @@ export const RemoteControlConfigSchema = z.object({
   infiniteBlocks: z.boolean(),
 });
 
+/**
+ * How a joystick or steering-wheel axis moves the paddle (the keyboard always works too).
+ * The device itself, which axis, and its range are set per computer, not here.
+ *  - 'step': like a key press. Pushing past `stepThreshold` moves one lane; the axis has to
+ *    come back inside `stepRelease` before it can move again.
+ *  - 'position': the axis position sets the paddle's. With `positionMotion` 'continuous' the
+ *    paddle follows the axis exactly, from the leftmost lane to the rightmost, with no spring,
+ *    and can stop between lanes. With 'lanes' the range is split into one zone per lane and
+ *    the paddle springs to the lane under the axis; a zone has to be entered by
+ *    `positionHysteresis` of its width before it changes lane, so a hand resting on a
+ *    boundary doesn't jitter. In both, `positionReach` is how much of the axis's travel
+ *    spans the lanes: at 0.7, 70% of the way to either side already reaches the outer lane,
+ *    for participants who find the full throw hard to reach.
+ */
+export const ControllerConfigSchema = z
+  .object({
+    mapping: z.enum(['step', 'position']),
+    /** 'position': follow the axis continuously, or snap to lanes. */
+    positionMotion: z.enum(['continuous', 'lanes']),
+    /** 'position': fraction of full travel (0.2–1) that reaches the outer lanes. */
+    positionReach: z.number().min(0.2).max(1),
+    /** 'step': fraction of full deflection that counts as a push. */
+    stepThreshold: z.number().gt(0).lt(1),
+    /** 'step': back inside this fraction of full deflection re-arms the next push. */
+    stepRelease: z.number().min(0).lt(1),
+    /** 'position' with 'lanes': fraction of a lane's zone (0–0.5). */
+    positionHysteresis: z.number().min(0).max(0.5),
+  })
+  .refine((c) => c.stepRelease < c.stepThreshold, { message: 'must be less than the push threshold', path: ['stepRelease'] });
+export type ControllerConfig = z.infer<typeof ControllerConfigSchema>;
+
+export const DEFAULT_CONTROLLER_CONFIG: ControllerConfig = {
+  mapping: 'step',
+  positionMotion: 'continuous',
+  positionReach: 1,
+  stepThreshold: 0.5,
+  stepRelease: 0.3,
+  positionHysteresis: 0.2,
+};
+
 export const ExperimentConfigSchema = z.object({
   /** Pre-filled on the start screen. */
   defaultParticipantId: z.string(),
@@ -84,6 +124,8 @@ export const ExperimentConfigSchema = z.object({
   appearance: AppearanceConfigSchema,
   calibration: CalibrationConfigSchema,
   remoteControl: RemoteControlConfigSchema,
+  /** Optional, so configs from before controller support still load. */
+  controller: ControllerConfigSchema.default(() => ({ ...DEFAULT_CONTROLLER_CONFIG })),
   /** Seed for the drop-lane RNG. Omit to pick one per session (it is always logged). */
   seed: z.number().int().optional(),
 });
@@ -131,6 +173,7 @@ export const DEFAULT_CONFIG: ExperimentConfig = {
     infiniteTrials: false,
     infiniteBlocks: false,
   },
+  controller: DEFAULT_CONTROLLER_CONFIG,
 };
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
@@ -143,6 +186,7 @@ export function resolveConfig(partial: DeepPartial<ExperimentConfig> = {}): Expe
     appearance: { ...DEFAULT_CONFIG.appearance, ...partial.appearance },
     calibration: { ...DEFAULT_CONFIG.calibration, ...partial.calibration },
     remoteControl: { ...DEFAULT_CONFIG.remoteControl, ...partial.remoteControl },
+    controller: { ...DEFAULT_CONFIG.controller, ...partial.controller },
   };
   return ExperimentConfigSchema.parse(merged);
 }

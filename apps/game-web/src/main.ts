@@ -9,7 +9,10 @@ import {
   type ExperimentConfig,
   type HostToGame,
 } from '@gtbd/protocol';
+import { continuousX, PositionMapper, StepMapper } from './axis-mapping';
 import { browserCapture, hostCapture, type BrowserCapture, type Capture } from './capture';
+import { Controller } from './controller';
+import { ControllerPanel } from './controller-panel';
 import { preset } from './presets';
 import { Renderer } from './renderer';
 import { saveFile, Screens } from './screens';
@@ -135,16 +138,21 @@ function onHostMessage(m: HostToGame): void {
 
 // ---- screens and input --------------------------------------------------------------------
 
+const controller = new Controller();
+const controllerPanel = new ControllerPanel(controller);
+
 const screens = new Screens(document.getElementById('overlay')!, {
   onStart: (pid) => startSession(pid),
   onContinue: () => exp?.dispatch({ type: 'continue', source: 'participant' }),
   onQuit: () => requestQuit(),
   onNewPairingCode: () => capture.newPairingCode(),
   onSettings: () => showSetup(),
+  mountController: (el) => controllerPanel.mount(el, () => config.controller, BROWSER ? 'set on the setup screen' : 'set in config.json'),
 });
 
 const setup = new SetupScreen(document.getElementById('overlay')!, {
   onAppearance: setAppearance,
+  mountController: (el, mapping) => controllerPanel.mount(el, mapping),
   onContinue: (c) => {
     config = c;
     localStorage.setItem(REMEMBERED_CONFIG, JSON.stringify(c));
@@ -160,6 +168,7 @@ function showStart(): void {
     pairingCode: capture.hello?.pairingCode ?? null,
     adminLinks: [],
     remoteControlled: config.remoteControl.enabled,
+    controller: controller.info?.name ?? null,
   });
 }
 
@@ -201,6 +210,9 @@ function startSession(participantId: string): void {
   lastAdvance = performance.now();
   exp.start();
   for (const peerId of adminLinks) exp.dispatch({ type: 'admin-link', status: 'connected', peerId });
+  const info = controller.info;
+  if (info) exp.dispatch({ type: 'controller', status: 'connected', ...info });
+  resetMappers();
 }
 
 /** Advance the experiment to real time `t` (performance.now() timebase). */
@@ -231,15 +243,17 @@ window.addEventListener(
     // its own millisecond, not the next frame's.
     advanceTo(ev.timeStamp);
     const screen = exp.status().screen;
+    // In position mode the paddle follows the controller, so keys would only fight it.
+    const keysMove = !ev.repeat && !followsController();
     let handled = true;
     switch (ev.code) {
       case 'ArrowLeft':
       case 'KeyA':
-        if (!ev.repeat) exp.dispatch({ type: 'move', direction: 'left' });
+        if (keysMove) exp.dispatch({ type: 'move', direction: 'left', input: 'keyboard' });
         break;
       case 'ArrowRight':
       case 'KeyD':
-        if (!ev.repeat) exp.dispatch({ type: 'move', direction: 'right' });
+        if (keysMove) exp.dispatch({ type: 'move', direction: 'right', input: 'keyboard' });
         break;
       case 'Enter':
       case 'NumpadEnter':
@@ -264,6 +278,80 @@ window.addEventListener(
   },
   { capture: true },
 );
+
+// ---- controller -----------------------------------------------------------------------------
+
+/** Axis changes smaller than this (of the −1..1 range) since the last one logged aren't logged. */
+const AXIS_LOG_STEP = 0.005;
+let stepper = new StepMapper(config.controller);
+let positioner = new PositionMapper(GEOMETRY.laneCount, config.controller.positionHysteresis, config.controller.positionReach);
+let loggedAxis: number | null = null;
+
+/** A fresh mapping for a new session or device, starting from where the axis is now. */
+function resetMappers(): void {
+  stepper = new StepMapper(config.controller);
+  positioner = new PositionMapper(GEOMETRY.laneCount, config.controller.positionHysteresis, config.controller.positionReach);
+  loggedAxis = null;
+  const v = controller.value;
+  if (v === null) return;
+  // A stick already held over when the session starts doesn't count as a push.
+  stepper.update(v);
+  positioner.update(v);
+  logAxis(v, controller.raw!);
+}
+
+function followsController(): boolean {
+  return config.controller.mapping === 'position' && controller.connected && controller.value !== null;
+}
+
+
+function logAxis(value: number, raw: number): void {
+  if (!exp || (loggedAxis !== null && Math.abs(value - loggedAxis) < AXIS_LOG_STEP)) return;
+  loggedAxis = value;
+  exp.dispatch({ type: 'controller-axis', value: Math.round(value * 10_000) / 10_000, raw });
+}
+
+/**
+ * Position mode: put the paddle where the controller says (also after a block resets it to
+ * the middle). Continuous: straight to the axis's x. Lanes: a lane at a time to its lane.
+ */
+function followController(): void {
+  if (!exp || !followsController()) return;
+  const st = exp.status();
+  if (st.phase !== 'running') return;
+  if (config.controller.positionMotion === 'continuous') {
+    exp.dispatch({ type: 'place', x: continuousX(controller.value!, config.controller.positionReach), input: 'controller' });
+    return;
+  }
+  const target = positioner.lane;
+  if (target === null) return;
+  for (let lane = st.catcherLane; lane !== target; lane += lane < target ? 1 : -1) {
+    exp.dispatch({ type: 'move', direction: lane < target ? 'right' : 'left', input: 'controller' });
+  }
+}
+
+controller.onSample((s) => {
+  if (!exp) return;
+  // As with keys: bring the experiment up to the moment of the reading first.
+  advanceTo(s.t);
+  logAxis(s.value, s.raw);
+  if (config.controller.mapping === 'step') {
+    for (const direction of stepper.update(s.value)) exp.dispatch({ type: 'move', direction, input: 'controller' });
+  } else {
+    positioner.update(s.value);
+    followController();
+  }
+});
+
+controller.onChange((c) => {
+  if (c.kind !== 'connected' && c.kind !== 'disconnected') return;
+  screens.updateStart({ controller: controller.info?.name ?? null });
+  if (!exp) return;
+  advanceTo(performance.now());
+  exp.dispatch({ type: 'controller', status: c.kind, ...c.info });
+  resetMappers();
+});
+void controller.init();
 
 /** Quit button, Escape, or the hidden 0 key: abort a running session (logged), then save and quit. */
 function requestQuit(): void {
@@ -332,6 +420,7 @@ function syncScreens(): void {
 const idle = { catcherX: laneX(GEOMETRY.middleLane), balls: [], tSys: 0 };
 function frame(now: number): void {
   advanceTo(now);
+  followController();
   syncScreens();
   renderer.render(exp ? exp.snapshot() : { ...idle, tSys: now });
   requestAnimationFrame(frame);

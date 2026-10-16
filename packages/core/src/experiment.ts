@@ -1,5 +1,6 @@
 import type {
   ControlCommand,
+  ControllerInfo,
   BallView,
   ContinueSource,
   DomainEvent,
@@ -7,6 +8,7 @@ import type {
   ExperimentPhase,
   ExperimentSnapshot,
   ExperimentStatus,
+  MoveInput,
   ScreenId,
 } from '@gtbd/protocol';
 import { initialStaircase, stepStaircase, type StaircaseState } from './calibration';
@@ -23,12 +25,17 @@ const SPIN_RATE = (2 * Math.PI) / 360;
 const MAX_STEPS_PER_ADVANCE = 5_000;
 
 export type ExperimentCommand =
-  | { type: 'move'; direction: 'left' | 'right' }
+  /** `input` defaults to 'keyboard'. */
+  | { type: 'move'; direction: 'left' | 'right'; input?: MoveInput }
+  /** Continuous control: put the catcher at `x` (world units) directly, without the spring. */
+  | { type: 'place'; x: number; input: MoveInput }
   | { type: 'continue'; source: Exclude<ContinueSource, 'admin' | 'auto'> }
   | { type: 'quit-key' }
   | { type: 'remote'; command: ControlCommand; source: string }
   | { type: 'admin-link'; status: 'connected' | 'lost'; peerId: string }
-  | { type: 'clock-sync'; peerId: string; offsetMs: number; rttMs: number };
+  | { type: 'clock-sync'; peerId: string; offsetMs: number; rttMs: number }
+  | ({ type: 'controller'; status: 'connected' | 'disconnected' } & ControllerInfo)
+  | { type: 'controller-axis'; value: number; raw: number };
 
 export interface ExperimentInit {
   config: ExperimentConfig;
@@ -101,6 +108,8 @@ export class Experiment {
 
   private catcherLane: number = GEOMETRY.middleLane;
   private catcherX = laneX(GEOMETRY.middleLane);
+  /** Placed by continuous control: the spring is off until the next lane move or reset. */
+  private placed = false;
   private readonly spring = new Spring(0, 0, 200, 0.1, 0.5, 100);
 
   constructor(private readonly init: ExperimentInit) {
@@ -167,7 +176,10 @@ export class Experiment {
   dispatch(cmd: ExperimentCommand): void {
     switch (cmd.type) {
       case 'move':
-        if (this.phase === 'running') this.moveCatcher(cmd.direction);
+        if (this.phase === 'running') this.moveCatcher(cmd.direction, cmd.input ?? 'keyboard');
+        return;
+      case 'place':
+        if (this.phase === 'running') this.placeCatcher(cmd.x, cmd.input);
         return;
       case 'continue': {
         const s = this.screen;
@@ -191,6 +203,14 @@ export class Experiment {
         return;
       case 'clock-sync':
         this.emit({ type: 'clock-sync', peerId: cmd.peerId, offsetMs: cmd.offsetMs, rttMs: cmd.rttMs });
+        return;
+      case 'controller': {
+        const { type: _, ...rest } = cmd;
+        if (this.phase !== 'ended') this.emit({ type: 'controller', ...rest });
+        return;
+      }
+      case 'controller-axis':
+        if (this.phase !== 'ended') this.emit({ type: 'controller-axis', value: cmd.value, raw: cmd.raw });
         return;
     }
   }
@@ -230,6 +250,7 @@ export class Experiment {
 
   /** DemoController::Move: ease towards the current lane with the critically damped spring. */
   private stepCatcher(dt: number): void {
+    if (this.placed) return;
     const target = laneX(this.catcherLane);
     const toTarget = target - this.catcherX;
     const dir = toTarget === 0 ? 1 : Math.sign(toTarget);
@@ -238,19 +259,42 @@ export class Experiment {
     this.catcherX = target - dir * this.spring.pos;
   }
 
-  private moveCatcher(direction: 'left' | 'right'): void {
+  private moveCatcher(direction: 'left' | 'right', input: MoveInput): void {
     const lane = direction === 'left' ? this.catcherLane - 1 : this.catcherLane + 1;
     const moved = lane >= 0 && lane < GEOMETRY.laneCount;
     if (moved) this.catcherLane = lane;
+    this.placed = false;
     this.emit({
       type: 'catcher-moved',
       direction,
       lane: this.catcherLane,
       legacyColumn: moved ? legacyColumn(this.catcherLane) : null,
+      input,
     });
   }
 
+  /**
+   * Continuous control: the catcher goes straight to `x`, clamped to the outer lanes, and
+   * catches wherever it is. Its lane is the nearest one, changed only once the catcher is
+   * past the midpoint by a tenth of the spacing, so a hand resting there doesn't flood the
+   * log. Each lane crossed is logged as a move, as with the keys.
+   */
+  private placeCatcher(x: number, input: MoveInput): void {
+    const g = GEOMETRY;
+    this.catcherX = Math.max(laneX(0), Math.min(laneX(g.laneCount - 1), x));
+    this.placed = true;
+    this.spring.stop();
+    if (Math.abs(this.catcherX - laneX(this.catcherLane)) <= 0.6 * g.laneSpacing) return;
+    const nearest = Math.round((this.catcherX - g.firstLaneX) / g.laneSpacing);
+    while (this.catcherLane !== nearest) {
+      const direction = nearest < this.catcherLane ? 'left' : 'right';
+      this.catcherLane += direction === 'left' ? -1 : 1;
+      this.emit({ type: 'catcher-moved', direction, lane: this.catcherLane, legacyColumn: legacyColumn(this.catcherLane), input });
+    }
+  }
+
   private goToMiddle(): void {
+    this.placed = false;
     this.catcherLane = GEOMETRY.middleLane;
     this.catcherX = laneX(GEOMETRY.middleLane);
     this.spring.stop();
@@ -274,7 +318,7 @@ export class Experiment {
       if (b.burnedAt === null && b.z <= g.burnZ) {
         b.burnedAt = this.tSys;
         this.missed++;
-        this.emit({ type: 'ball-missed', ballId: b.id, lane: b.lane, catcherLane: this.catcherLane, count: this.missed });
+        this.emit({ type: 'ball-missed', ballId: b.id, lane: b.lane, catcherLane: this.catcherLane, catcherX: this.catcherX, count: this.missed });
       }
       if (b.z <= g.killZ) {
         this.destroyed++;
